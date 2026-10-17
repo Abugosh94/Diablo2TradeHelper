@@ -1166,6 +1166,10 @@ class App:
         # Initialize API key field visibility based on saved mode
         self._on_pc_mode_changed()
 
+        # Auto-fetch models on startup when in API mode with a key present
+        if self.pc_mode_var.get() == "api" and self.pc_api_key_var.get().strip():
+            self._on_pc_fetch_models()
+
         self.pc_status_var = tk.StringVar(
             value="Idle. Capture a tooltip and click Price Check."
         )
