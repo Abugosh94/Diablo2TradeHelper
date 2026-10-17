@@ -229,7 +229,7 @@ class RoundedButton(tk.Canvas):
                                      self.bg_color)
             return self._resolve(self.bg_color,
                                  self.theme_secondary_bg,
-                                 secondary_bg_default)
+                                 self.secondary_bg_default)
         else:
             if not self.enabled:
                 return self._resolve(self.disabled_color,
@@ -252,10 +252,10 @@ class RoundedButton(tk.Canvas):
             if not self.enabled:
                 return self._resolve(self.disabled_fg_color,
                                      self.theme_secondary_disabled_fg,
-                                     secondary_disabled_fg_default)
+                                     self.secondary_disabled_fg_default)
             return self._resolve(self.fg_color,
                                  self.theme_secondary_fg,
-                                 secondary_fg_default)
+                                 self.secondary_fg_default)
         else:
             if not self.enabled:
                 return self._resolve(self.disabled_fg_color,
@@ -774,6 +774,12 @@ class App:
         self.root.option_add("*Canvas.background", bg)
         self.root.option_add("*Canvas.highlightThickness", 0)
 
+        # Update scrollable canvases explicitly (option_add doesn't affect existing widgets)
+        if hasattr(self, "pc_canvas"):
+            self.pc_canvas.configure(bg=bg)
+        if hasattr(self, "settings_canvas"):
+            self.settings_canvas.configure(bg=bg)
+
         # Update all RoundedButton instances with theme colors
         RoundedButton.update_theme(
             primary_bg=accent,
@@ -839,26 +845,26 @@ class App:
         notebook.add(pc_tab, text="Price Check")
         pc_container = ttk.Frame(pc_tab)
         pc_container.pack(fill="both", expand=True)
-        pc_canvas = tk.Canvas(pc_container, highlightthickness=0)
-        pc_vbar = ttk.Scrollbar(pc_container, orient="vertical", command=pc_canvas.yview)
-        pc_canvas.configure(yscrollcommand=pc_vbar.set)
+        self.pc_canvas = tk.Canvas(pc_container, highlightthickness=0)
+        pc_vbar = ttk.Scrollbar(pc_container, orient="vertical", command=self.pc_canvas.yview)
+        self.pc_canvas.configure(yscrollcommand=pc_vbar.set)
         pc_vbar.pack(side="right", fill="y")
-        pc_canvas.pack(side="left", fill="both", expand=True)
-        pc_body = ttk.Frame(pc_canvas)
+        self.pc_canvas.pack(side="left", fill="both", expand=True)
+        pc_body = ttk.Frame(self.pc_canvas)
         pc_body.bind(
             "<Configure>",
-            lambda e: pc_canvas.configure(scrollregion=pc_canvas.bbox("all")),
+            lambda e: self.pc_canvas.configure(scrollregion=self.pc_canvas.bbox("all")),
         )
-        pc_canvas.create_window((0, 0), window=pc_body, anchor="nw", tags="pcbody")
-        pc_canvas.bind(
+        self.pc_canvas.create_window((0, 0), window=pc_body, anchor="nw", tags="pcbody")
+        self.pc_canvas.bind(
             "<Configure>",
-            lambda e: pc_canvas.itemconfigure("pcbody", width=e.width),
+            lambda e: self.pc_canvas.itemconfigure("pcbody", width=e.width),
         )
         # Mouse-wheel scrolling on the Price Check tab only
         def _pc_wheel(e):
             if notebook.index(notebook.select()) == 0:
-                pc_canvas.yview_scroll(-1 * (e.delta // 120), "units")
-        pc_canvas.bind_all("<MouseWheel>", _pc_wheel)
+                self.pc_canvas.yview_scroll(-1 * (e.delta // 120), "units")
+        self.pc_canvas.bind_all("<MouseWheel>", _pc_wheel)
         pc_body.columnconfigure(0, weight=1)
         pc_body.rowconfigure(3, weight=1)
 
@@ -1156,6 +1162,9 @@ class App:
         if self.pc_mode_var.get() != "api":
             self.pc_result_frame.grid_forget()
 
+        # Initialize API key field visibility based on saved mode
+        self._on_pc_mode_changed()
+
         self.pc_status_var = tk.StringVar(
             value="Idle. Capture a tooltip and click Price Check."
         )
@@ -1256,22 +1265,22 @@ class App:
         notebook.add(settings_outer, text="Settings")
         settings_outer.columnconfigure(0, weight=1)
         settings_outer.rowconfigure(0, weight=1)
-        s_canvas = tk.Canvas(settings_outer, highlightthickness=0)
-        s_vbar = ttk.Scrollbar(settings_outer, orient="vertical", command=s_canvas.yview)
-        s_canvas.configure(yscrollcommand=s_vbar.set)
+        self.settings_canvas = tk.Canvas(settings_outer, highlightthickness=0)
+        s_vbar = ttk.Scrollbar(settings_outer, orient="vertical", command=self.settings_canvas.yview)
+        self.settings_canvas.configure(yscrollcommand=s_vbar.set)
         s_vbar.pack(side="right", fill="y")
-        s_canvas.pack(side="left", fill="both", expand=True)
-        settings_tab = ttk.Frame(s_canvas)
+        self.settings_canvas.pack(side="left", fill="both", expand=True)
+        settings_tab = ttk.Frame(self.settings_canvas)
         settings_tab.bind("<Configure>",
-                          lambda e: s_canvas.configure(scrollregion=s_canvas.bbox("all")))
-        s_canvas.create_window((0, 0), window=settings_tab, anchor="nw", tags="sbody")
-        s_canvas.bind("<Configure>",
-                      lambda e: s_canvas.itemconfigure("sbody", width=e.width))
+                          lambda e: self.settings_canvas.configure(scrollregion=self.settings_canvas.bbox("all")))
+        self.settings_canvas.create_window((0, 0), window=settings_tab, anchor="nw", tags="sbody")
+        self.settings_canvas.bind("<Configure>",
+                      lambda e: self.settings_canvas.itemconfigure("sbody", width=e.width))
         # Mouse-wheel scrolling on the Settings tab only - now tab index 2
         def _s_wheel(e):
             if notebook.index(notebook.select()) == 2:
-                s_canvas.yview_scroll(-1 * (e.delta // 120), "units")
-        s_canvas.bind("<MouseWheel>", _s_wheel)
+                self.settings_canvas.yview_scroll(-1 * (e.delta // 120), "units")
+        self.settings_canvas.bind("<MouseWheel>", _s_wheel)
         settings_tab.columnconfigure(0, weight=1)
         settings_tab.rowconfigure(0, weight=0)
         settings_tab.rowconfigure(1, weight=0)
@@ -1993,11 +2002,12 @@ class App:
     def _on_theme_combo_changed(self, selection):
         """Handle theme dropdown change in Settings."""
         if selection == "System Default (Auto)":
-            # Try to detect system theme; fall back to light
-            new_theme = self._detect_system_theme()
+            # Save "system" so it stays dynamic across restarts
+            new_theme = "system"
+            self.theme_var.set("system")
         else:
             new_theme = "dark" if selection == "Dark" else "light"
-        self.theme_var.set(new_theme)
+            self.theme_var.set(new_theme)
         self.cfg["theme"] = new_theme
         save_config(self.cfg)
         self._apply_theme()
@@ -2072,13 +2082,21 @@ class App:
             self.pc_status_var.set(f"Model fetch failed: {error}")
             self.pc_model_combo["values"] = []
         else:
-            self.pc_model_combo["values"] = models
-            # Keep current selection if still valid, else pick first
+            # Always ensure vision-capable models are available as defaults.
+            # The API may return models that don't support image input (e.g.
+            # antigravity-preview-*), so prepend known-working ones.
+            safe_defaults = ["gemini-1.5-pro", "gemini-1.5-flash"]
+            deduped = []
+            for m in safe_defaults + models:
+                if m not in deduped:
+                    deduped.append(m)
+            self.pc_model_combo["values"] = deduped
+            # Default to gemini-1.5-pro (known to support images)
             current = self.pc_model_var.get()
-            if current not in models and models:
-                self.pc_model_var.set(models[0])
-                self.cfg.setdefault("price_check", {})["gemini_model"] = models[0]
-            self.pc_status_var.set(f"Loaded {len(models)} models.")
+            if current not in deduped and deduped:
+                self.pc_model_var.set(deduped[0])
+                self.cfg.setdefault("price_check", {})["gemini_model"] = deduped[0]
+            self.pc_status_var.set(f"Loaded {len(deduped)} models.")
 
     def _on_pc_add_marketplace(self):
         """Add a user-typed marketplace to the listbox (max 5)."""

@@ -438,20 +438,37 @@ class PriceChecker:
             ]
         }
         model = self.cfg.setdefault("price_check", {}).get("gemini_model", "gemini-1.5-pro")
-        url = (
-            "https://generativelanguage.googleapis.com/v1/models/"
-            + model + ":generateContent?key=" + api_key
-        )
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            url, data=data, headers={"Content-Type": "application/json"}
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                body = resp.read().decode("utf-8")
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8")
-            return False, f"Gemini API error ({e.code}): {body}"
+
+        def _try_call(model_name):
+            url = (
+                "https://generativelanguage.googleapis.com/v1/models/"
+                + model_name + ":generateContent?key=" + api_key
+            )
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                url, data=data, headers={"Content-Type": "application/json"}
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    body = resp.read().decode("utf-8")
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8")
+                return e.code, body
+            return None, body
+
+        # Try the selected model first
+        code, body = _try_call(model)
+
+        # If the model doesn't support image input, retry with gemini-1.5-pro
+        if code == 400 and "modality" in body.lower() and model != "gemini-1.5-pro":
+            code, body = _try_call("gemini-1.5-pro")
+            if code is None:
+                self.cfg.setdefault("price_check", {})["gemini_model"] = "gemini-1.5-pro"
+                self.save()
+
+        if code is not None:
+            return False, f"Gemini API error ({code}): {body}"
+
         result = json.loads(body)
         try:
             text = result["candidates"][0]["content"]["parts"][0]["text"]
