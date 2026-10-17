@@ -915,7 +915,7 @@ class App:
         self.pc_model_var = tk.StringVar(
             value=self.price_checker.get_config().get("gemini_model", "gemini-1.5-pro")
         )
-        self.pc_model_label = ttk.Label(self.pc_api_key_frame, text="Gemini model:")
+        self.pc_model_label = ttk.Label(self.pc_api_key_frame, text="Model:")
         self.pc_model_label.grid(row=1, column=0, sticky="e", padx=(0, 6))
         self.pc_model_combo = ttk.Combobox(
             self.pc_api_key_frame,
@@ -925,6 +925,7 @@ class App:
             state="readonly",
         )
         self.pc_model_combo.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(0, 6))
+        self.pc_model_var.trace_add("write", self._on_pc_model_changed)
         # Will be gridded/removed dynamically in _on_pc_mode_changed and _on_pc_ai_tool_changed
         self.pc_api_key_frame.grid_remove()  # hidden until API mode selected
 
