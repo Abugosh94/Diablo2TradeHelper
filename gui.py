@@ -897,12 +897,29 @@ class App:
             command=self._on_pc_api_show_toggle,
         )
         self.pc_api_show_cb.grid(row=0, column=2)
-        self.pc_api_fetch_btn = ttk.Button(
+        self.pc_api_fetch_btn = RoundedButton(
             self.pc_api_key_frame,
             text="Fetch Models",
+            style="secondary",
             command=self._on_pc_fetch_models,
         )
         self.pc_api_fetch_btn.grid(row=0, column=3, padx=(6, 0))
+
+        # Gemini model row (shown only in API mode + Gemini selected)
+        self.pc_model_var = tk.StringVar(
+            value=self.price_checker.get_config().get("gemini_model", "gemini-1.5-pro")
+        )
+        self.pc_model_label = ttk.Label(self.pc_api_key_frame, text="Gemini model:")
+        self.pc_model_label.grid(row=1, column=0, sticky="e", padx=(0, 6))
+        self.pc_model_combo = ttk.Combobox(
+            self.pc_api_key_frame,
+            textvariable=self.pc_model_var,
+            values=[],  # populated by fetching from API
+            width=18,
+            state="readonly",
+        )
+        self.pc_model_combo.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(0, 6))
+        # Will be gridded/removed dynamically in _on_pc_mode_changed and _on_pc_ai_tool_changed
         self.pc_api_key_frame.grid_remove()  # hidden until API mode selected
 
         ttk.Radiobutton(
@@ -966,20 +983,6 @@ class App:
             state="readonly",
         )
         self.pc_new_chat_combo.grid(row=4, column=1, columnspan=2, sticky="ew", padx=6, pady=3)
-
-        # Gemini model selector (shown only in API mode + Gemini selected)
-        self.pc_model_var = tk.StringVar(
-            value=self.price_checker.get_config().get("gemini_model", "gemini-1.5-pro")
-        )
-        self.pc_model_label = ttk.Label(self.pc_mode_frame, text="Gemini model:")
-        self.pc_model_combo = ttk.Combobox(
-            self.pc_mode_frame,
-            textvariable=self.pc_model_var,
-            values=[],  # populated by fetching from API
-            width=18,
-            state="readonly",
-        )
-        # Will be gridded/removed dynamically in _on_pc_mode_changed and _on_pc_ai_tool_changed
 
         # Key bind display
         self.pc_keybind_var = tk.StringVar()
