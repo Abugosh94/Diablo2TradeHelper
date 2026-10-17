@@ -945,7 +945,9 @@ class App:
         self.pc_custom_ai_name_var = tk.StringVar()
         self.pc_custom_ai_url_var = tk.StringVar()
         self.pc_custom_ai_keybind_var = tk.StringVar(value="ctrl+shift+o")
-        self._on_pc_ai_tool_changed()  # set initial visibility
+        # set initial visibility (guard: pc_model_label may not exist yet)
+        if hasattr(self, "pc_model_label"):
+            self._on_pc_ai_tool_changed()
 
         # New chat behavior
         self.pc_new_chat_var = tk.StringVar()
