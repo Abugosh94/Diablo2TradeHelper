@@ -2082,21 +2082,19 @@ class App:
             self.pc_status_var.set(f"Model fetch failed: {error}")
             self.pc_model_combo["values"] = []
         else:
-            # Always ensure vision-capable models are available as defaults.
-            # The API may return models that don't support image input (e.g.
-            # antigravity-preview-*), so prepend known-working ones.
-            safe_defaults = ["gemini-1.5-pro", "gemini-1.5-flash"]
-            deduped = []
-            for m in safe_defaults + models:
-                if m not in deduped:
-                    deduped.append(m)
-            self.pc_model_combo["values"] = deduped
-            # Default to gemini-1.5-pro (known to support images)
-            current = self.pc_model_var.get()
-            if current not in deduped and deduped:
-                self.pc_model_var.set(deduped[0])
-                self.cfg.setdefault("price_check", {})["gemini_model"] = deduped[0]
-            self.pc_status_var.set(f"Loaded {len(deduped)} models.")
+            # Only show models returned by the API - no hardcoded defaults
+            # since available models vary by API key and region.
+            self.pc_model_combo["values"] = models
+            if models:
+                # Keep current selection if still valid, else pick first
+                current = self.pc_model_var.get()
+                if current not in models:
+                    self.pc_model_var.set(models[0])
+                    self.cfg.setdefault("price_check", {})["gemini_model"] = models[0]
+                self.pc_status_var.set(f"Loaded {len(models)} models.")
+            else:
+                self.pc_model_var.set("")
+                self.pc_status_var.set("No vision-capable models found for this API key.")
 
     def _on_pc_add_marketplace(self):
         """Add a user-typed marketplace to the listbox (max 5)."""

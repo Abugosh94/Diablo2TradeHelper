@@ -437,7 +437,10 @@ class PriceChecker:
                 }
             ]
         }
-        model = self.cfg.setdefault("price_check", {}).get("gemini_model", "gemini-1.5-pro")
+        model = self.cfg.setdefault("price_check", {}).get("gemini_model", "")
+
+        if not model:
+            return False, "No Gemini model selected. Click 'Fetch Models' to select one."
 
         def _try_call(model_name):
             url = (
@@ -456,15 +459,7 @@ class PriceChecker:
                 return e.code, body
             return None, body
 
-        # Try the selected model first
         code, body = _try_call(model)
-
-        # If the model doesn't support image input, retry with gemini-1.5-pro
-        if code == 400 and "modality" in body.lower() and model != "gemini-1.5-pro":
-            code, body = _try_call("gemini-1.5-pro")
-            if code is None:
-                self.cfg.setdefault("price_check", {})["gemini_model"] = "gemini-1.5-pro"
-                self.save()
 
         if code is not None:
             return False, f"Gemini API error ({code}): {body}"
