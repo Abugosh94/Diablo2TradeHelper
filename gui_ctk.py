@@ -707,7 +707,7 @@ class App:
             self.pc_api_key_frame,
             text="Tip: use a model that can process images (e.g. gpt-4o, gemini-1.5-flash).",
             text_color=("#18181B", "#F4F4F5"),
-            font=("Segoe UI", 9),
+            font=("Segoe UI", 12),
         ).grid(row=2, column=0, columnspan=3, sticky="w", padx=(0, 6), pady=(0, 6))
 
         self.pc_api_key_frame.grid_remove()
@@ -2462,11 +2462,9 @@ class App:
 
         # Position at right edge of main window, starting minimized (outside app bounds)
 
-        x = self.root.winfo_rootx() + self.root.winfo_width()
+        # Defer geometry until the root window is mapped so winfo_width() is correct.
 
-        y = self.root.winfo_rooty() + 100
-
-        self.ai_panel.geometry(f"{self.ai_panel_minimized_width}x600+{x}+{y}")
+        self.root.after_idle(self._position_ai_panel_initial)
 
         # Panel frame
 
@@ -2572,6 +2570,12 @@ class App:
 
         self._hide_ai_panel()
 
+    def _position_ai_panel_initial(self):
+
+        """Position the AI panel at the right edge after the root window is mapped."""
+
+        self._hide_ai_panel()
+
     def _toggle_ai_panel(self):
 
         """Toggle the AI response panel between expanded and minimized."""
@@ -2600,6 +2604,8 @@ class App:
 
         self.ai_toggle_btn.configure(text="<")
 
+        self.ai_minimize_btn.configure(text="Minimize")
+
         self.ai_panel_expanded = True
 
         self.ai_panel.deiconify()
@@ -2621,6 +2627,8 @@ class App:
         self.ai_panel.geometry(f"{self.ai_panel_minimized_width}x600+{x}+{y}")
 
         self.ai_toggle_btn.configure(text=">")
+
+        self.ai_minimize_btn.configure(text="...")
 
         self.ai_panel_expanded = False
 
