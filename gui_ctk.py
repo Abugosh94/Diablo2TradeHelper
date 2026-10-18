@@ -608,9 +608,21 @@ class App:
 
             row=0, column=0, sticky="w", padx=(0, 6))
 
-        self.pc_api_key_var = ctk.StringVar(
+        self.pc_api_key_var = ctk.StringVar()
 
-            value=self.cfg.get("price_check", {}).get("api_key", ""))
+        # Pre-fill with last successful API key if no current key is saved
+
+        saved_api_key = self.cfg.get("price_check", {}).get("api_key", "")
+
+        last_successful_key = self.cfg.get("price_check", {}).get("last_successful_api_key", "")
+
+        if not saved_api_key and last_successful_key:
+
+            self.pc_api_key_var.set(last_successful_key)
+
+        else:
+
+            self.pc_api_key_var.set(saved_api_key)
 
         # Auto-fetch models whenever the API key is entered/changed (in API mode)
 
@@ -651,6 +663,18 @@ class App:
         fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5"))
 
         self.pc_api_fetch_btn.grid(row=0, column=3, padx=(6, 0))
+
+        self.pc_api_clear_btn = ctk.CTkButton(
+
+            self.pc_api_key_frame,
+
+            text="Clear",
+
+            command=self._on_pc_api_clear,
+
+        fg_color=("#27272A", "#27272A"), hover_color=("#404040", "#404040"), text_color=("#F4F4F5", "#F4F4F5"))
+
+        self.pc_api_clear_btn.grid(row=0, column=4, padx=(6, 0))
 
 
 
@@ -1806,6 +1830,19 @@ class App:
 
         self.pc_api_key_entry.configure(show="" if show else "*")
 
+    def _on_pc_api_clear(self):
+
+        """Clear the API key field and hide the model selector."""
+
+        self.pc_api_key_var.set("")
+
+        self.pc_model_label.grid_remove()
+
+        self.pc_model_combo.grid_remove()
+
+        self.pc_status_var.set("API key cleared.")
+
+
 
 
     def _on_pc_fetch_models(self):
@@ -1879,6 +1916,12 @@ class App:
                 if not models:
 
                     models = []
+
+                # Remember the last successful API key
+
+                self.cfg.setdefault("price_check", {})["last_successful_api_key"] = api_key
+
+                save_config(self.cfg)
 
                 self.root.after(0, lambda: self._on_models_fetched(models, None))
 
