@@ -746,6 +746,16 @@ class App:
 
         )
 
+        # AI Response slide-out panel state
+
+        self.ai_panel = None
+
+        self.ai_panel_expanded = False
+
+        self.ai_panel_width = 450
+
+        self.ai_panel_minimized_width = 40
+
         self.pc_platform_var = ctk.StringVar(value="PC")
 
         self.pc_ladder_var = ctk.StringVar(
@@ -1111,19 +1121,7 @@ class App:
 
         self.pc_result_frame.columnconfigure(0, weight=1)
 
-        self.pc_result_frame.rowconfigure(1, weight=1)
-
-        ctk.CTkLabel(
-
-            self.pc_result_frame,
-
-            text="AI Response / Price Check Result:",
-
-            text_color=("#18181B", "#F4F4F5"),
-
-            font=("Segoe UI", 11, "bold"),
-
-        ).grid(row=0, column=0, sticky="w", padx=6, pady=(4, 2))
+        self.pc_result_frame.rowconfigure(0, weight=1)
 
         self.pc_result_text = ctk.CTkTextbox(
             self.pc_result_frame,
@@ -1135,7 +1133,7 @@ class App:
             text_color=("#18181B", "#F4F4F5"),
         )
 
-        self.pc_result_text.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 6))
+        self.pc_result_text.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
 
         pc_result_scroll = ctk.CTkScrollbar(
             self.pc_result_frame, command=self.pc_result_text.yview
@@ -1160,6 +1158,10 @@ class App:
         self._on_pc_mode_changed()
 
         self._on_pc_ai_tool_changed()
+
+        # Create the slide-out AI response panel
+        self._create_ai_response_panel()
+
 
 
 
@@ -2415,6 +2417,7 @@ class App:
             if success:
 
                 self.pc_result_text.insert("0.0", message)
+                self._show_ai_response(message)
 
                 self.pc_status_var.set("Price check complete.")
 
@@ -2423,6 +2426,8 @@ class App:
                 self.pc_result_text.insert("0.0", f"Error: {message}")
 
                 self.pc_status_var.set("Price check failed.")
+
+                self._show_ai_response(f"Error: {message}")
 
         else:
 
@@ -2437,6 +2442,180 @@ class App:
 
 
 
+
+    def _create_ai_response_panel(self):
+
+        """Create a slide-out side panel for AI responses."""
+
+        self.ai_panel = ctk.CTkToplevel(self.root)
+
+        self.ai_panel.overrideredirect(True)
+
+        self.ai_panel.attributes("-topmost", True)
+
+        self.ai_panel.geometry(
+
+            f"{self.ai_panel_minimized_width}x600+"
+
+            f"{self.root.winfo_rootx() + self.root.winfo_width() - self.ai_panel_minimized_width}+"
+
+            f"{self.root.winfo_rooty() + 100}"
+
+        )
+
+        self.ai_panel_frame = ctk.CTkFrame(
+
+            self.ai_panel,
+
+            fg_color=("#1a1a1a", "#1a1a1a"),
+
+            border_color=("#333333", "#333333"),
+
+            border_width=1,
+
+        )
+
+        self.ai_panel_frame.pack(fill="both", expand=True)
+
+        self.ai_title_bar = ctk.CTkFrame(
+
+            self.ai_panel_frame, fg_color=("#2d2d2d", "#2d2d2d"), height=30
+
+        )
+
+        self.ai_title_bar.pack(fill="x", padx=2, pady=2)
+
+        self.ai_title_bar.pack_propagate(False)
+
+        self.ai_toggle_btn = ctk.CTkButton(
+
+            self.ai_title_bar,
+
+            text=">",
+
+            width=30,
+
+            command=self._toggle_ai_panel,
+
+            fg_color=("#3B82F6", "#3B82F6"),
+
+            hover_color=("#60A5FA", "#60A5FA"),
+
+        )
+
+        self.ai_toggle_btn.pack(side="left", padx=5, pady=5)
+
+        self.ai_title_label = ctk.CTkLabel(
+
+            self.ai_title_bar,
+
+            text="AI Response",
+
+            text_color=("#F4F4F5", "#F4F4F5"),
+
+            font=("Segoe UI", 10, "bold"),
+
+        )
+
+        self.ai_title_label.pack(side="left", padx=5)
+
+        self.ai_response_text = ctk.CTkTextbox(
+
+            self.ai_panel_frame,
+
+            font=("Consolas", 11),
+
+            fg_color=("#1a1a1a", "#1a1a1a"),
+
+            border_color=("#333333", "#333333"),
+
+            border_width=1,
+
+            text_color=("#F4F4F5", "#F4F4F5"),
+
+        )
+
+        self.ai_response_text.pack(fill="both", expand=True, padx=5, pady=5)
+
+        self.ai_minimize_btn = ctk.CTkButton(
+
+            self.ai_panel_frame,
+
+            text="Minimize",
+
+            command=self._hide_ai_panel,
+
+            fg_color=("#404040", "#404040"),
+
+            hover_color=("#505050", "#505050"),
+
+            text_color=("#F4F4F5", "#F4F4F5"),
+
+        )
+
+        self.ai_minimize_btn.pack(fill="x", padx=5, pady=5)
+
+        self._hide_ai_panel()
+
+    def _toggle_ai_panel(self):
+
+        if self.ai_panel_expanded:
+
+            self._hide_ai_panel()
+
+        else:
+
+            self._show_ai_panel()
+
+    def _show_ai_panel(self):
+
+        if not self.ai_panel:
+
+            return
+
+        x = self.root.winfo_rootx() + self.root.winfo_width() - self.ai_panel_width
+
+        y = self.root.winfo_rooty() + 100
+
+        self.ai_panel.geometry(f"{self.ai_panel_width}x600+{x}+{y}")
+
+        self.ai_toggle_btn.configure(text="<")
+
+        self.ai_panel_expanded = True
+
+        self.ai_panel.deiconify()
+
+        self.ai_panel.lift()
+
+    def _hide_ai_panel(self):
+
+        if not self.ai_panel:
+
+            return
+
+        x = self.root.winfo_rootx() + self.root.winfo_width() - self.ai_panel_minimized_width
+
+        y = self.root.winfo_rooty() + 100
+
+        self.ai_panel.geometry(f"{self.ai_panel_minimized_width}x600+{x}+{y}")
+
+        self.ai_toggle_btn.configure(text=">")
+
+        self.ai_panel_expanded = False
+
+        self.ai_panel.deiconify()
+
+    def _show_ai_response(self, message):
+
+        if not self.ai_panel:
+
+            return
+
+        self.ai_response_text.delete("0.0", "end")
+
+        self.ai_response_text.insert("0.0", message)
+
+        self._show_ai_panel()
 
     def _refresh_site_combo(self):
 
