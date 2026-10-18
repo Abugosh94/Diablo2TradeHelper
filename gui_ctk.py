@@ -681,7 +681,7 @@ class App:
 
         self.pc_model_var = ctk.StringVar(
 
-            value=self.price_checker.get_config().get("gemini_model", "gemini-1.5-pro"))
+            value=self.price_checker.get_config().get("ai_model", "gpt-4o"))
 
         self.pc_model_label = ctk.CTkLabel(self.pc_api_key_frame, text="Model:", text_color=("#18181B", "#F4F4F5"))
 
@@ -1487,7 +1487,7 @@ class App:
 
     def _on_pc_model_changed(self, *args):
 
-        self.cfg.setdefault("price_check", {})["gemini_model"] = self.pc_model_var.get()
+        self.cfg.setdefault("price_check", {})["ai_model"] = self.pc_model_var.get()
 
         save_config(self.cfg)
 
@@ -1973,7 +1973,7 @@ class App:
 
                     self.pc_model_var.set(models[0])
 
-                    self.cfg.setdefault("price_check", {})["gemini_model"] = models[0]
+                    self.cfg.setdefault("price_check", {})["ai_model"] = models[0]
 
                 self.pc_status_var.set(f"Loaded {len(models)} models.")
 
@@ -2149,7 +2149,7 @@ class App:
 
             self.pc_model_combo.grid(row=5, column=1, columnspan=2, sticky="ew", padx=6, pady=3)
 
-            self.cfg.setdefault("price_check", {})["gemini_model"] = self.pc_model_var.get()
+            self.cfg.setdefault("price_check", {})["ai_model"] = self.pc_model_var.get()
 
             # Re-fetch models when switching AI tool with a key present
 
@@ -2165,7 +2165,7 @@ class App:
 
     def _on_pc_model_changed(self, *args):
 
-        self.cfg.setdefault("price_check", {})["gemini_model"] = self.pc_model_var.get()
+        self.cfg.setdefault("price_check", {})["ai_model"] = self.pc_model_var.get()
 
         save_config(self.cfg)
 
@@ -2445,7 +2445,14 @@ class App:
 
     def _create_ai_response_panel(self):
 
-        """Create a slide-out side panel for AI responses."""
+        """Create a slide-out side panel for AI responses.
+
+        The panel is a separate top-level window positioned at the right
+        edge of the main app window (OUTSIDE the app bounds). It starts
+        minimized (small tab) and expands to the right when opened,
+        never overlapping the app content.
+
+        """
 
         self.ai_panel = ctk.CTkToplevel(self.root)
 
@@ -2453,15 +2460,15 @@ class App:
 
         self.ai_panel.attributes("-topmost", True)
 
-        self.ai_panel.geometry(
+        # Position at right edge of main window, starting minimized (outside app bounds)
 
-            f"{self.ai_panel_minimized_width}x600+"
+        x = self.root.winfo_rootx() + self.root.winfo_width()
 
-            f"{self.root.winfo_rootx() + self.root.winfo_width() - self.ai_panel_minimized_width}+"
+        y = self.root.winfo_rooty() + 100
 
-            f"{self.root.winfo_rooty() + 100}"
+        self.ai_panel.geometry(f"{self.ai_panel_minimized_width}x600+{x}+{y}")
 
-        )
+        # Panel frame
 
         self.ai_panel_frame = ctk.CTkFrame(
 
@@ -2476,6 +2483,8 @@ class App:
         )
 
         self.ai_panel_frame.pack(fill="both", expand=True)
+
+        # Title bar with toggle button
 
         self.ai_title_bar = ctk.CTkFrame(
 
@@ -2519,6 +2528,8 @@ class App:
 
         self.ai_title_label.pack(side="left", padx=5)
 
+        # Response text area
+
         self.ai_response_text = ctk.CTkTextbox(
 
             self.ai_panel_frame,
@@ -2536,6 +2547,8 @@ class App:
         )
 
         self.ai_response_text.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Minimize button at bottom
 
         self.ai_minimize_btn = ctk.CTkButton(
 
@@ -2555,9 +2568,13 @@ class App:
 
         self.ai_minimize_btn.pack(fill="x", padx=5, pady=5)
 
+        # Start minimized
+
         self._hide_ai_panel()
 
     def _toggle_ai_panel(self):
+
+        """Toggle the AI response panel between expanded and minimized."""
 
         if self.ai_panel_expanded:
 
@@ -2569,11 +2586,13 @@ class App:
 
     def _show_ai_panel(self):
 
+        """Expand the AI response panel to the right, outside the app window."""
+
         if not self.ai_panel:
 
             return
 
-        x = self.root.winfo_rootx() + self.root.winfo_width() - self.ai_panel_width
+        x = self.root.winfo_rootx() + self.root.winfo_width()
 
         y = self.root.winfo_rooty() + 100
 
@@ -2589,11 +2608,13 @@ class App:
 
     def _hide_ai_panel(self):
 
+        """Collapse the AI response panel to a slim tab at the right edge."""
+
         if not self.ai_panel:
 
             return
 
-        x = self.root.winfo_rootx() + self.root.winfo_width() - self.ai_panel_minimized_width
+        x = self.root.winfo_rootx() + self.root.winfo_width()
 
         y = self.root.winfo_rooty() + 100
 
@@ -2606,6 +2627,8 @@ class App:
         self.ai_panel.deiconify()
 
     def _show_ai_response(self, message):
+
+        """Display the AI response in the slide-out panel and expand it."""
 
         if not self.ai_panel:
 
