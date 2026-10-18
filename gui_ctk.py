@@ -561,6 +561,7 @@ class App:
         self.pc_body.pack(fill="both", expand=True, padx=5, pady=5)
 
         self.pc_body.columnconfigure(0, weight=1)
+        self.pc_body.rowconfigure(3, weight=1)
 
 
 

@@ -368,18 +368,23 @@ class PriceChecker:
         return False
 
     def _run_api(self, ai_tool, api_key, filled_prompt, pil_img, on_result):
-        """Call the selected AI API with the filled prompt + tooltip image."""
+        """Call the selected AI API with the filled prompt + tooltip image.
+
+        The provider is detected from the API key format (sk-* = OpenAI,
+        anything else = Gemini) rather than relying solely on the ai_tool
+        dropdown selection, so a ChatGPT key is never accidentally sent to
+        the Gemini endpoint.
+        """
         if not api_key or not api_key.strip():
             on_result(False, "API key is required for API mode.")
             return
 
         try:
-            if ai_tool == "gemini":
-                ok, text = self._call_gemini(api_key.strip(), filled_prompt, pil_img)
-            elif ai_tool == "chatgpt":
+            # Detect provider from key format: sk-* -> OpenAI, else Gemini
+            if api_key.strip().startswith("sk-"):
                 ok, text = self._call_openai(api_key.strip(), filled_prompt, pil_img)
             else:
-                ok, text = False, f"Unknown AI tool: {ai_tool}"
+                ok, text = self._call_gemini(api_key.strip(), filled_prompt, pil_img)
             on_result(ok, text)
         except Exception as e:  # noqa: BLE001
             on_result(False, f"API call failed: {e}")
