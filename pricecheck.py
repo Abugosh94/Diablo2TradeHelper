@@ -370,21 +370,26 @@ class PriceChecker:
     def _run_api(self, ai_tool, api_key, filled_prompt, pil_img, on_result):
         """Call the selected AI API with the filled prompt + tooltip image.
 
-        The provider is detected from the API key format (sk-* = OpenAI,
-        anything else = Gemini) rather than relying solely on the ai_tool
-        dropdown selection, so a ChatGPT key is never accidentally sent to
-        the Gemini endpoint.
+        Works for any AI tool: built-in (gemini, chatgpt) or custom.
+        The API URL is looked up from the tool config, and the provider
+        is detected from the key format or tool key.
         """
         if not api_key or not api_key.strip():
             on_result(False, "API key is required for API mode.")
             return
 
         try:
-            # Detect provider from key format: sk-* -> OpenAI, else Gemini
-            if api_key.strip().startswith("sk-"):
+            url = self._ai_tool_url(ai_tool)
+
+            if ai_tool == "gemini":
+                ok, text = self._call_gemini(api_key.strip(), filled_prompt, pil_img)
+            elif ai_tool == "chatgpt":
                 ok, text = self._call_openai(api_key.strip(), filled_prompt, pil_img)
             else:
-                ok, text = self._call_gemini(api_key.strip(), filled_prompt, pil_img)
+                # Custom AI tool - make a generic API call to its URL
+                ok, text = self._call_custom(
+                    ai_tool, url, api_key.strip(), filled_prompt, pil_img
+                )
             on_result(ok, text)
         except Exception as e:  # noqa: BLE001
             on_result(False, f"API call failed: {e}")
@@ -491,10 +496,10 @@ class PriceChecker:
                 }
             ]
         }
-        model = self.cfg.setdefault("price_check", {}).get("gemini_model", "")
+        model = self.cfg.setdefault("price_check", {}).get("ai_model", "")
 
         if not model:
-            return False, "No Gemini model selected. Click 'Fetch Models' to select one."
+            return False, "No AI model selected. Click 'Fetch Models' to select one."
 
         def _try_call(model_name):
             url = (
@@ -526,9 +531,9 @@ class PriceChecker:
             return True, body  # return raw if we can't parse the expected shape
 
     def _call_openai(self, api_key, prompt, pil_img):
-        """Call the OpenAI ChatGPT API using the model selected in the dropdown."""
+        """Call the OpenAI API using the model selected in the dropdown."""
         img_b64 = _image_to_base64(pil_img)
-        model = self.cfg.setdefault("price_check", {}).get("gemini_model", "gpt-4o")
+        model = self.cfg.setdefault("price_check", {}).get("ai_model", "gpt-4o")
         payload = {
             "model": model,
             "messages": [
@@ -569,3 +574,67 @@ class PriceChecker:
             return True, text
         except (KeyError, IndexError, TypeError):
             return True, body
+
+    def _call_custom(self, tool_key, url, api_key, prompt, pil_img):
+        """Call a custom AI tool API with the filled prompt + tooltip image.
+
+        Uses a generic OpenAI-compatible request format:
+          POST <url>
+          Headers: Authorization: Bearer <api_key>, Content-Type: application/json
+          Body:  {"model": <model>, "messages": [{"role": "user", "content": [...] }]}
+
+        Works with any AI tool that exposes an OpenAI-compatible chat API.
+        """
+        img_b64 = _image_to_base64(pil_img)
+        model = self.cfg.setdefault("price_check", {}).get("ai_model", "")
+
+        if not model:
+            return False, "No AI model selected. Click 'Fetch Models' to select one."
+
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{img_b64}"
+                            },
+                        },
+                    ],
+                }
+            ],
+            "max_tokens": 1000,
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + api_key,
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                body = resp.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8")
+            return False, f"Custom AI tool '{tool_key}' error ({e.code}): {body}"
+        except Exception as e:
+            return False, f"Custom AI tool '{tool_key}' request failed: {e}"
+        result = json.loads(body)
+        try:
+            # Try OpenAI-compatible response format first
+            text = result["choices"][0]["message"]["content"]
+            return True, text
+        except (KeyError, IndexError, TypeError):
+            # Fall back to Gemini-compatible format
+            try:
+                text = result["candidates"][0]["content"]["parts"][0]["text"]
+                return True, text
+            except (KeyError, IndexError, TypeError):
+                return True, body
