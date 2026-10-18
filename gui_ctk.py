@@ -2573,6 +2573,7 @@ class App:
         # Hide panel when app is minimized, show when restored
         self.root.bind("<Unmap>", self._on_root_unmap)
         self.root.bind("<Map>", self._on_root_map)
+        self.root.bind("<Configure>", self._on_root_configure)
 
     def _position_ai_panel_initial(self):
 
@@ -2597,6 +2598,24 @@ class App:
             # Re-position in case window size changed while minimized
 
             self._hide_ai_panel()
+
+    def _on_root_configure(self, event):
+
+        """Re-position the AI panel when the root window moves or resizes."""
+
+        if self.ai_panel and self.ai_panel.winfo_exists():
+
+            # Only re-position if the root window itself changed (not children)
+
+            if event.widget is self.root:
+
+                if self.ai_panel_expanded:
+
+                    self._show_ai_panel()
+
+                else:
+
+                    self._hide_ai_panel()
 
     def _toggle_ai_panel(self):
 
