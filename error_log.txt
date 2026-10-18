@@ -1,168 +1,23 @@
 
-[2026-10-16 12:34:45]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:34:46]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:34:47]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:34:48]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:34:49]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:34:51]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:34:52]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:34:53]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:34:54]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:34:55]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:34:57]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:00]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:01]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:17]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:18]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:18]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:22]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:22]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:23]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:23]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:36]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:37]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:37]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:37]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:38]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:38]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:39]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-16 12:35:39]
-tray failed: 'App' object has no attribute '_show_from_tray'
-
-[2026-10-17 12:58:52]
-UNHANDLED: TypeError: tkinter.Grid.grid_configure() got multiple values for keyword argument 'pady'
+[2026-10-18 22:00:13]
+UNHANDLED: KeyboardInterrupt: 
 Traceback (most recent call last):
   File "D:\Addon test\main.py", line 213, in <module>
     sys.exit(main())
              ^^^^^^
-  File "D:\Addon test\main.py", line 207, in main
-    gui = GuiApp()
-          ^^^^^^^^
-  File "D:\Addon test\gui.py", line 217, in __init__
-    self._build_ui()
-  File "D:\Addon test\gui.py", line 441, in _build_ui
-    action_frame.grid(row=2, column=0, sticky="ew", pady=(10, 0), **pad)
-TypeError: tkinter.Grid.grid_configure() got multiple values for keyword argument 'pady'
+  File "D:\Addon test\main.py", line 208, in main
+    gui.run()
+  File "D:\Addon test\gui_ctk.py", line 3122, in run
+    self.root.mainloop()
+  File "C:\Python311\Lib\site-packages\customtkinter\windows\ctk_tk.py", line 170, in mainloop
+    super().mainloop(*args, **kwargs)
+  File "C:\Python311\Lib\tkinter\__init__.py", line 1485, in mainloop
+    self.tk.mainloop(n)
+  File "C:\Python311\Lib\tkinter\__init__.py", line 1943, in __call__
+    def __call__(self, *args):
+    
+KeyboardInterrupt
 
 
-[2026-10-17 12:59:07]
-UNHANDLED: TypeError: tkinter.Grid.grid_configure() got multiple values for keyword argument 'pady'
-Traceback (most recent call last):
-  File "D:\Addon test\main.py", line 213, in <module>
-    sys.exit(main())
-             ^^^^^^
-  File "D:\Addon test\main.py", line 207, in main
-    gui = GuiApp()
-          ^^^^^^^^
-  File "D:\Addon test\gui.py", line 217, in __init__
-    self._build_ui()
-  File "D:\Addon test\gui.py", line 441, in _build_ui
-    action_frame.grid(row=2, column=0, sticky="ew", pady=(10, 0), **pad)
-TypeError: tkinter.Grid.grid_configure() got multiple values for keyword argument 'pady'
-
-
-[2026-10-17 12:59:18]
-UNHANDLED: TypeError: tkinter.Grid.grid_configure() got multiple values for keyword argument 'pady'
-Traceback (most recent call last):
-  File "D:\Addon test\main.py", line 213, in <module>
-    sys.exit(main())
-             ^^^^^^
-  File "D:\Addon test\main.py", line 207, in main
-    gui = GuiApp()
-          ^^^^^^^^
-  File "D:\Addon test\gui.py", line 217, in __init__
-    self._build_ui()
-  File "D:\Addon test\gui.py", line 441, in _build_ui
-    action_frame.grid(row=2, column=0, sticky="ew", pady=(10, 0), **pad)
-TypeError: tkinter.Grid.grid_configure() got multiple values for keyword argument 'pady'
-
-
-[2026-10-17 13:43:55]
-UNHANDLED: AttributeError: 'App' object has no attribute 'pc_result_frame'
-Traceback (most recent call last):
-  File "D:\Addon test\main.py", line 213, in <module>
-    sys.exit(main())
-             ^^^^^^
-  File "D:\Addon test\main.py", line 207, in main
-    gui = GuiApp()
-          ^^^^^^^^
-  File "D:\Addon test\gui.py", line 217, in __init__
-    self._build_ui()
-  File "D:\Addon test\gui.py", line 337, in _build_ui
-    self._on_pc_mode_changed()
-  File "D:\Addon test\gui.py", line 1341, in _on_pc_mode_changed
-    self.pc_result_frame.grid_forget()
-    ^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'App' object has no attribute 'pc_result_frame'
-
-
-[2026-10-17 16:03:39]
-UNHANDLED: AttributeError: 'App' object has no attribute 'theme_combo_var'
-Traceback (most recent call last):
-  File "D:\Addon test\main.py", line 213, in <module>
-    sys.exit(main())
-             ^^^^^^
-  File "D:\Addon test\main.py", line 207, in main
-    gui = GuiApp()
-          ^^^^^^^^
-  File "D:\Addon test\gui.py", line 217, in __init__
-    self._build_ui()
-  File "D:\Addon test\gui.py", line 789, in _build_ui
-    self.theme_combo_var.set("System Default (Auto)")
-    ^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'App' object has no attribute 'theme_combo_var'
-
+[2026-10-18 23:33:42]
+CropDialog failed: invalid color name "#FFFFFF #18181B"

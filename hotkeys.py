@@ -214,13 +214,13 @@ def get_start_with_windows():
 
 
 def focus_browser_window(url_hint=None, timeout=4.0):
-    """Bring the trading-site browser tab to the foreground.
+    """Bring the trading-site / AI-tool browser tab to the foreground.
 
-    os.startfile() opens the URL in a NEW TAB, but if the browser window
-    was minimized / behind the game, the tab never becomes visible and the
-    auto-paste lands nowhere. This finds the top-level browser window
-    whose title contains a hint from the URL (domain or page title) and
-    restores + focuses it, so the quick-list page is actually visible.
+    os.startfile() / webbrowser.open() open the URL in a NEW TAB, but if the
+    browser window was minimized / behind the game, the tab never becomes
+    visible and the auto-paste lands nowhere. This finds the top-level
+    browser window whose title contains a hint from the URL (domain or page
+    title) and restores + focuses it, so the page is actually visible.
 
     Best effort: returns True when a window was focused, False otherwise
     (the paste logic still runs - if the user focuses the browser in time,
@@ -230,24 +230,31 @@ def focus_browser_window(url_hint=None, timeout=4.0):
     import time
     import os
     from ctypes import wintypes
+    from urllib.parse import urlparse
 
     hints = []
     if url_hint:
         low = url_hint.lower()
-        # domain fragment, e.g. 'd2grail.com' from the LootLens URL
         try:
-            from urllib.parse import urlparse
             netloc = urlparse(low if "://" in low else "https://" + low).netloc
             if netloc:
-                hints.append(netloc.replace("www.", "").split(":")[0])
-                # Add AI-tool-specific short hints (window titles show page
+                domain = netloc.replace("www.", "").split(":")[0]
+                hints.append(domain)
+                # Also add the domain without subdomain (e.g. "google.com"
+                # from "gemini.google.com", "openai.com" from
+                # "chat.openai.com")
+                parts = domain.split(".")
+                if len(parts) >= 2:
+                    hints.append(".".join(parts[-2:]))
+                # AI-tool-specific short hints (window titles show page
                 # names, not full domains)
                 if "gemini" in low:
-                    hints += ["gemini"]
+                    hints += ["gemini", "google gemini"]
                 elif "chatgpt" in low or "openai" in low:
-                    hints += ["chatgpt"]
+                    hints += ["chatgpt", "chat gpt", "openai"]
         except Exception:
             pass
+        # Generic trading-site hints
         hints += ["diablo2", "diablo.trade", "diablo trade",
                   "trade", "posting", "listing", "sell", "marketplace"]
     else:

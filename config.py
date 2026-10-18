@@ -42,7 +42,7 @@ def resource_path(relative_path):
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
 
 DEFAULT_CONFIG = {
-    "capture_window_title": "",  # empty = auto ('diablo'); any window-title substring
+    "capture_window_title": "Diablo II",  # capture only from the selected app window (Diablo II by default)
     "hotkeys": {
         "quick_list_item": "f9",
         "manual_crop_item": "f10",
@@ -85,6 +85,7 @@ DEFAULT_CONFIG = {
         "new_chat_each_time": True,  # True = new chat each price check, False = same chat
         "custom_ai_tools": [],
     },
+    "theme": "system",  # 'system' | 'light' | 'dark' - defaults to system default
 }
 TRADING_SITE = DEFAULT_CONFIG["trading_site"]
 

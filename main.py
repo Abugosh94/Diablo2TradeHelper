@@ -184,7 +184,7 @@ def main():
         app.run()  # console hotkey mode
         return 0
     # Default: GUI control panel
-    from gui import App as GuiApp, _log_error
+    from gui_ctk import App as GuiApp, _log_error
     # Crash hooks: in a windowless exe, unhandled exceptions (especially in
     # threads) are invisible - log them to error_log.txt so issues are diagnosable.
     import sys as _sys

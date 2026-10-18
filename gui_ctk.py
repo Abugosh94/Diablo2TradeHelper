@@ -1,0 +1,3420 @@
+"""Quick list tooltip poster for Diablo 2 - CustomTkinter GUI."""
+
+import os
+
+import subprocess
+
+import sys
+
+import threading
+
+
+
+try:
+
+    import torch  # noqa: F401
+
+except Exception as _e:
+
+    print(f"[startup] WARNING: torch preload failed: {_e}")
+
+
+
+import customtkinter as ctk
+
+from tkinter import messagebox
+
+
+
+try:
+
+    import pystray
+
+    from PIL import Image, ImageTk
+
+except Exception:
+
+    pystray = None
+
+    Image = None
+
+    ImageTk = None
+
+
+
+from config import (load_config, save_config, app_dir, get_trading_url,
+
+                    TRADING_SITE_LABELS)
+
+from hotkeys import HotkeyManager, copy_image_to_clipboard, focus_browser_window
+
+from scanner import InventoryScanner
+
+from pricecheck import (
+
+    PriceChecker,
+
+    DEFAULT_AI_TOOLS,
+
+    PLATFORM_OPTIONS,
+
+    LADDER_OPTIONS,
+
+    HARDCORE_OPTIONS,
+
+    DEFAULT_TIMEFRAMES,
+
+    DEFAULT_MARKETPLACES,
+
+)
+
+
+
+APP_TITLE = "D2TradeHelper"
+
+APP_VERSION = "0.2"
+
+
+
+
+
+def resource_path(relative_path):
+
+    if getattr(sys, "frozen", False):
+
+        base = getattr(sys, "_MEIPASS", None)
+
+        if base and os.path.exists(os.path.join(base, relative_path)):
+
+            return os.path.join(base, relative_path)
+
+        return os.path.join(os.path.dirname(sys.executable), relative_path)
+
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+
+                        relative_path)
+
+
+
+
+
+def _log_error(text):
+
+    try:
+
+        import datetime
+
+        path = os.path.join(app_dir(), "error_log.txt")
+
+        with open(path, "a", encoding="utf-8") as f:
+
+            f.write(f"\n[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}]\n{text}\n")
+
+    except Exception:
+
+        pass
+
+
+
+
+
+def format_hotkey(combo):
+
+    """Capitalize hotkey parts for display: 'ctrl+alt+q' -> 'Ctrl+Alt+Q', 'f9' -> 'F9'."""
+
+    if not combo:
+
+        return combo
+
+    parts = combo.split("+")
+
+    return "+".join(p.capitalize() for p in parts)
+
+
+
+
+def _friendly_keybind(name):
+
+    """Return user-friendly name for keybind actions."""
+
+    friendly = {
+
+        "quick_list_item": "Quick List Item",
+
+        "manual_crop_item": "Manual Crop Item",
+
+        "price_check_item": "Price Check Item",
+
+        "quit": "Quit App",
+
+    }
+
+    return friendly.get(name, name)
+
+
+
+
+
+class CropDialog(ctk.CTkToplevel):
+
+    MAX_W, MAX_H = 1500, 860
+
+    MIN_SEL_W, MIN_SEL_H = 30, 20
+
+
+
+    def __init__(self, master, img_bgr, title, on_done):
+
+        super().__init__(master)
+
+        self.title(title or "Select the area to post")
+
+        self.img = img_bgr
+
+        self.on_done = on_done
+
+        self.rect = None
+
+        self._drag_start = None
+
+        self._temp_id = None
+
+
+
+        import cv2
+
+        from PIL import Image, ImageTk
+
+        scale = min(self.MAX_W / img_bgr.shape[1],
+
+                    self.MAX_H / img_bgr.shape[0], 1.0)
+
+        self.scale = scale
+
+        dw = max(1, int(img_bgr.shape[1] * scale))
+
+        dh = max(1, int(img_bgr.shape[0] * scale))
+
+        rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+
+        pil = Image.fromarray(rgb).resize((dw, dh))
+
+        self._photo = ImageTk.PhotoImage(pil)
+
+
+
+        self.canvas = ctk.CTkCanvas(self, width=dw, height=dh,
+
+                                    cursor="crosshair", highlightthickness=0, bg=("#FFFFFF", "#18181B"))
+
+        self.canvas.create_image(0, 0, anchor="nw", image=self._photo)
+
+        self.canvas.pack(fill="both", expand=True)
+
+
+
+        bar = ctk.CTkFrame(self, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        bar.pack(fill="x")
+
+        self.info = ctk.CTkLabel(bar, text="Drag a rectangle around the tooltip. "
+
+                                         "Enter = use, Esc = cancel", text_color=("#18181B", "#F4F4F5"))
+
+        self.info.pack(side="left", padx=6, pady=4)
+
+        self.cancel_btn = ctk.CTkButton(bar, text="Cancel",
+
+                                        command=self._cancel, fg_color=("#27272A", "#27272A"), hover_color=("#27272A", "#27272A"), text_color=("#18181B", "#F4F4F5"))
+
+        self.cancel_btn.pack(side="right", padx=6, pady=4)
+
+        self.use_btn = ctk.CTkButton(bar, text="Use selection",
+
+                                     command=self._ok, state="disabled", fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5"))
+
+        self.use_btn.pack(side="right", padx=6, pady=4)
+
+
+
+        self.canvas.bind("<ButtonPress-1>", self._press)
+
+        self.canvas.bind("<B1-Motion>", self._motion)
+
+        self.canvas.bind("<ButtonRelease-1>", self._release)
+
+        self.bind("<Escape>", self._cancel)
+
+        self.bind("<Return>", self._ok)
+
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+
+
+        self.attributes("-topmost", True)
+
+        self.grab_set()
+
+        self.focus_force()
+
+        self.lift()
+
+
+
+    def _press(self, e):
+
+        self._drag_start = (e.x, e.y)
+
+        if self._temp_id is not None:
+
+            self.canvas.delete(self._temp_id)
+
+            self._temp_id = None
+
+
+
+    def _motion(self, e):
+
+        if not self._drag_start:
+
+            return
+
+        x0, y0 = self._drag_start
+
+        if self._temp_id is not None:
+
+            self.canvas.delete(self._temp_id)
+
+        self._temp_id = self.canvas.create_rectangle(
+
+            min(x0, e.x), min(y0, e.y), max(x0, e.x), max(y0, e.y),
+
+            outline="#00ff00", width=2)
+
+
+
+    def _release(self, e):
+
+        if not self._drag_start:
+
+            return
+
+        x0, y0 = self._drag_start
+
+        self._drag_start = None
+
+        x1, y1 = min(x0, e.x), min(y0, e.y)
+
+        x2, y2 = max(x0, e.x), max(y0, e.y)
+
+        if (x2 - x1) >= self.MIN_SEL_W and (y2 - y1) >= self.MIN_SEL_H:
+
+            self.rect = (x1, y1, x2, y2)
+
+            self.use_btn.configure(state="normal")
+
+            self.info.configure(
+
+                text=f"Selection: {int((x2 - x1) / self.scale)}x"
+
+                     f"{int((y2 - y1) / self.scale)}px "
+
+                     "(Enter = use, drag again to redo)")
+
+        else:
+
+            self.rect = None
+
+            self.use_btn.configure(state="disabled")
+
+            self.info.configure(text="Selection too small - drag a bigger rectangle.")
+
+
+
+    def _ok(self, _e=None):
+
+        if not self.rect:
+
+            return
+
+        dx1, dy1, dx2, dy2 = self.rect
+
+        s = 1.0 / self.scale
+
+        h, w = self.img.shape[:2]
+
+        x1 = max(0, min(int(dx1 * s), w - 1))
+
+        y1 = max(0, min(int(dy1 * s), h - 1))
+
+        x2 = max(x1 + 1, min(int(dx2 * s), w))
+
+        y2 = max(y1 + 1, min(int(dy2 * s), h))
+
+        crop = self.img[y1:y2, x1:x2].copy()
+
+        cb = self.on_done
+
+        self.destroy()
+
+        if cb:
+
+            cb(crop)
+
+
+
+    def _cancel(self, _e=None):
+
+        cb = self.on_done
+
+        self.destroy()
+
+        if cb:
+
+            cb(None)
+
+
+
+
+
+class App:
+
+    def __init__(self):
+
+        self.cfg = load_config()
+
+        self.scanner = InventoryScanner()
+
+        self.price_checker = PriceChecker(self.cfg)
+
+        self.scanner.profile = {}
+
+        self.recorder = None
+
+        self.hotkey_mgr = None
+        self._bind_listener = None
+
+        self.tray = None
+
+        self._build_ui()
+
+        self._start_hotkeys()
+
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+
+
+    def _apply_theme(self):
+
+        effective_theme = self.theme_var.get()
+
+        if effective_theme in ("System Default (Auto)", "system"):
+
+            effective_theme = self._detect_system_theme()
+
+        ctk.set_appearance_mode(effective_theme.lower())
+
+
+
+    def _detect_system_theme(self):
+
+        try:
+
+            import winreg
+
+            key = winreg.OpenKey(
+
+                winreg.HKEY_CURRENT_USER,
+
+                r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+
+            )
+
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+
+            winreg.CloseKey(key)
+
+            return "light" if value == 1 else "dark"
+
+        except Exception:
+
+            return "light"
+
+
+
+    def _on_theme_changed(self, selection):
+
+        # Store the internal theme value so config stays consistent
+        # ("system" | "light" | "dark") regardless of the display label.
+        if selection == "System Default (Auto)":
+
+            self.cfg["theme"] = "system"
+
+            effective_theme = self._detect_system_theme()
+
+        elif selection == "Dark":
+
+            self.cfg["theme"] = "dark"
+
+            effective_theme = "dark"
+
+        else:
+
+            self.cfg["theme"] = "light"
+
+            effective_theme = "light"
+
+        ctk.set_appearance_mode(effective_theme)
+
+        save_config(self.cfg)
+
+
+
+    def _build_ui(self):
+
+        self.root = ctk.CTk()
+
+        self.root.title(f"{APP_TITLE} v{APP_VERSION}")
+
+        self.root.configure(fg_color=("#F4F4F5", "#121214"))
+
+        self.root.configure(fg_color=("#F4F4F5", "#121214"))
+
+        self.root.geometry("780x840")
+
+        self.root.minsize(690, 720)
+
+        try:
+
+            self.root.iconbitmap(resource_path("Logo.ico"))
+
+        except Exception:
+
+            pass
+
+
+
+        self.pad = {"padx": 10, "pady": 10}
+
+
+
+        self.theme_var = ctk.StringVar(value=self.cfg.get("theme", "system"))
+
+        self._apply_theme()
+
+
+
+        try:
+
+            _logo_img = Image.open(resource_path("Logo.png")).resize((16, 16), Image.LANCZOS)
+
+            _logo_photo = ctk.CTkImage(light_image=_logo_img, dark_image=_logo_img, size=(16, 16))
+
+            _logo_label = ctk.CTkLabel(self.root, image=_logo_photo, text="", text_color=("#18181B", "#F4F4F5"))
+
+            _logo_label.image = _logo_photo
+
+            _logo_label.place(relx=1.0, x=-30, y=5, anchor="ne")
+
+        except Exception:
+
+            pass
+
+        version_label = ctk.CTkLabel(self.root, text=f"v{APP_VERSION}", font=("Segoe UI", 8), text_color=("#18181B", "#F4F4F5"))
+
+        version_label.place(relx=1.0, x=-10, y=5, anchor="ne")
+
+
+
+        self.notebook = ctk.CTkTabview(self.root, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.notebook.pack(fill="both", expand=True, padx=0, pady=0)
+
+
+
+        self.notebook.add("Price Check")
+
+        self.notebook.add("Quick List")
+
+        self.notebook.add("Settings")
+
+
+
+        self.pc_tab = self.notebook.tab("Price Check")
+
+        self.pc_tab.columnconfigure(0, weight=1)
+
+        self.pc_tab.rowconfigure(0, weight=1)
+
+
+
+        self.pc_scroll = ctk.CTkScrollableFrame(self.pc_tab, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.pc_scroll.pack(fill="both", expand=True)
+
+        self.pc_scroll.columnconfigure(0, weight=1)
+
+
+
+        self.pc_body = ctk.CTkFrame(self.pc_scroll, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.pc_body.pack(fill="both", expand=True, padx=5, pady=5)
+
+        self.pc_body.columnconfigure(0, weight=1)
+
+
+
+        self.pc_mode_frame = ctk.CTkFrame(self.pc_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.pc_mode_frame.grid(row=0, column=0, sticky="ew", **self.pad)
+
+        self.pc_mode_frame.columnconfigure(1, weight=1)
+
+        self.pc_mode_frame.columnconfigure(2, weight=1)
+
+
+
+        self.pc_mode_var = ctk.StringVar(
+
+            value=self.price_checker.get_config().get("mode", "redirect"))
+
+
+
+        self.pc_api_var = ctk.CTkRadioButton(
+
+            self.pc_mode_frame,
+
+            text="Use API key (result appears in this app)",
+
+            variable=self.pc_mode_var,
+
+            value="api",
+
+            command=self._on_pc_mode_changed,
+
+        )
+
+        self.pc_api_var.grid(row=0, column=0, columnspan=3, sticky="w", padx=6, pady=3)
+
+
+
+        self.pc_api_key_frame = ctk.CTkFrame(self.pc_mode_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.pc_api_key_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=(0, 3))
+
+        self.pc_api_key_frame.columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(self.pc_api_key_frame, text="API key:", text_color=("#18181B", "#F4F4F5")).grid(
+
+            row=0, column=0, sticky="w", padx=(0, 6))
+
+        self.pc_api_key_var = ctk.StringVar(
+
+            value=self.cfg.get("price_check", {}).get("api_key", ""))
+
+        # Auto-fetch models whenever the API key is entered/changed (in API mode)
+
+        self.pc_api_key_var.trace_add(
+
+            "write", lambda *_: self._on_pc_api_key_changed()
+
+        )
+
+        self.pc_api_key_entry = ctk.CTkEntry(
+
+            self.pc_api_key_frame, textvariable=self.pc_api_key_var, width=40, show="*", fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"))
+
+        self.pc_api_key_entry.grid(row=0, column=1, sticky="ew", padx=(0, 6))
+
+        self.pc_api_show_var = ctk.BooleanVar(value=False)
+
+        self.pc_api_show_cb = ctk.CTkCheckBox(
+
+            self.pc_api_key_frame,
+
+            text="Show", variable=self.pc_api_show_var,
+
+            command=self._on_pc_api_show_toggle,
+
+            text_color=("#18181B", "#F4F4F5"))
+
+        self.pc_api_show_cb.grid(row=0, column=2)
+
+        self.pc_api_fetch_btn = ctk.CTkButton(
+
+            self.pc_api_key_frame,
+
+            text="Fetch Models",
+
+            command=self._on_pc_fetch_models,
+
+        fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5"))
+
+        self.pc_api_fetch_btn.grid(row=0, column=3, padx=(6, 0))
+
+
+
+        self.pc_model_var = ctk.StringVar(
+
+            value=self.price_checker.get_config().get("gemini_model", "gemini-1.5-pro"))
+
+        self.pc_model_label = ctk.CTkLabel(self.pc_api_key_frame, text="Model:", text_color=("#18181B", "#F4F4F5"))
+
+        self.pc_model_label.grid(row=1, column=0, sticky="e", padx=(0, 6))
+
+        self.pc_model_combo = ctk.CTkComboBox(
+
+            self.pc_api_key_frame,
+
+            variable=self.pc_model_var,
+
+            values=[],
+
+            width=200,
+
+        fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), button_color=("#3B82F6", "#3B82F6"))
+
+        self.pc_model_combo.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(0, 6))
+
+        self.pc_model_var.trace_add("write", self._on_pc_model_changed)
+
+        self.pc_api_key_frame.grid_remove()
+
+
+
+        ctk.CTkRadioButton(
+
+            self.pc_mode_frame,
+
+            text="Redirect to AI tool (open in browser)", text_color=("#18181B", "#F4F4F5"),
+
+            variable=self.pc_mode_var,
+
+            value="redirect",
+
+            command=self._on_pc_mode_changed,
+
+        ).grid(row=2, column=0, columnspan=3, sticky="w", padx=6, pady=3)
+
+
+
+        # ---- Custom AI tool / marketplace / status variables ----
+
+        self.pc_custom_ai_name_var = ctk.StringVar()
+
+        self.pc_custom_ai_url_var = ctk.StringVar()
+
+        self.pc_custom_ai_keybind_var = ctk.StringVar(value="ctrl+shift+o")
+
+        self.pc_keybind_var = ctk.StringVar()
+
+        self.pc_status_var = ctk.StringVar(
+
+            value="Idle. Capture a tooltip and click Price Check."
+
+        )
+
+        self.pc_platform_var = ctk.StringVar(value="PC")
+
+        self.pc_ladder_var = ctk.StringVar(
+
+            value=self.price_checker.get_config().get("ladder_status", "Ladder")
+
+        )
+
+        self.pc_hardcore_var = ctk.StringVar(
+
+            value=self.price_checker.get_config().get("hardcore_status", "Softcore")
+
+        )
+
+        self.pc_timeframe_var = ctk.StringVar(
+
+            value=self.price_checker.get_config().get("timeframe", "Last 7 Days")
+
+        )
+
+        self.pc_custom_days_var = ctk.StringVar(
+
+            value=str(self.price_checker.get_config().get("custom_timeframe_days", 7))
+
+        )
+
+        self.pc_mp_buttons = []
+
+        self.pc_custom_mp_var = ctk.StringVar()
+
+
+
+        # ---- AI tool selector (next to the redirect option) ----
+
+        ai_options = self.price_checker.get_ai_tool_options()
+
+        ai_labels = [label for _key, label, _url, _kb in ai_options]
+
+        ai_keys = [key for key, _label, _url, _kb in ai_options]
+
+        self._pc_ai_key_by_label = dict(zip(ai_labels, ai_keys))
+
+        stored_key = self.price_checker.get_config().get("ai_tool", "gemini")
+
+        stored_label = "Gemini"
+
+        for label, key in self._pc_ai_key_by_label.items():
+
+            if key == stored_key:
+
+                stored_label = label
+
+                break
+
+        self.pc_ai_tool_var = ctk.StringVar(value=stored_label)
+
+        self.pc_ai_tool_label = ctk.CTkLabel(self.pc_mode_frame, text="AI tool:", text_color=("#18181B", "#F4F4F5"))
+
+        self.pc_ai_tool_label.grid(row=3, column=0, sticky="e", padx=6, pady=3)
+
+        self.pc_ai_tool_combo = ctk.CTkComboBox(
+
+            self.pc_mode_frame,
+
+            variable=self.pc_ai_tool_var,
+
+            values=ai_labels,
+
+            width=200,
+
+            command=lambda _v: self._on_pc_ai_tool_changed(),
+
+        )
+
+        self.pc_ai_tool_combo.grid(
+
+            row=3, column=1, columnspan=2, sticky="ew", padx=6, pady=3
+
+        )
+
+
+
+        # New chat behavior
+
+        self.pc_new_chat_var = ctk.StringVar()
+
+        new_chat_each_time = self.price_checker.get_config().get(
+
+            "new_chat_each_time", True
+
+        )
+
+        self.pc_new_chat_var.set(
+
+            "New chat each time" if new_chat_each_time else "Continue same chat"
+
+        )
+
+        ctk.CTkLabel(self.pc_mode_frame, text="New chat behavior:", text_color=("#18181B", "#F4F4F5")).grid(
+
+            row=4, column=0, sticky="e", padx=6, pady=3
+
+        )
+
+        self.pc_new_chat_combo = ctk.CTkComboBox(
+
+            self.pc_mode_frame,
+
+            variable=self.pc_new_chat_var,
+
+            values=["New chat each time", "Continue same chat"],
+
+            width=200,
+            command=lambda _v: self._on_pc_ai_tool_changed(),
+
+        )
+
+        self.pc_new_chat_combo.grid(
+
+            row=4, column=1, columnspan=2, sticky="ew", padx=6, pady=3
+
+        )
+
+
+
+        # ---- Item variables (filled into the AI prompt) ----
+
+        var_frame = ctk.CTkFrame(self.pc_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        var_frame.grid(row=1, column=0, sticky="ew", **self.pad)
+
+        var_frame.columnconfigure(1, weight=1)
+
+
+
+        # Platform (always PC)
+
+        ctk.CTkLabel(var_frame, text="Platform:", text_color=("#18181B", "#F4F4F5")).grid(
+            row=0, column=0, sticky="w", padx=6, pady=3
+        )
+        ctk.CTkLabel(var_frame, text="PC", text_color=("#18181B", "#F4F4F5")).grid(
+            row=0, column=1, sticky="w", padx=6, pady=3
+        )
+
+
+
+
+
+        # Game Mode (Ladder / Non-Ladder)
+
+        ctk.CTkLabel(var_frame, text="Game Mode:", text_color=("#18181B", "#F4F4F5")).grid(
+
+            row=1, column=0, sticky="w", padx=6, pady=3
+
+        )
+
+        ladder_frame = ctk.CTkFrame(var_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        ladder_frame.grid(row=1, column=1, sticky="w", padx=6, pady=3)
+
+        for opt in LADDER_OPTIONS:
+
+            ctk.CTkRadioButton(
+
+                ladder_frame,
+
+                text=opt,
+
+                variable=self.pc_ladder_var,
+
+                value=opt,
+
+            text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(0, 8))
+
+
+
+        # Softcore / Hardcore
+
+        ctk.CTkLabel(var_frame, text="Softcore / Hardcore:", text_color=("#18181B", "#F4F4F5")).grid(
+
+            row=2, column=0, sticky="w", padx=6, pady=3
+
+        )
+
+        hc_frame = ctk.CTkFrame(var_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        hc_frame.grid(row=2, column=1, sticky="w", padx=6, pady=3)
+
+        for opt in HARDCORE_OPTIONS:
+
+            ctk.CTkRadioButton(
+
+                hc_frame,
+
+                text=opt,
+
+                variable=self.pc_hardcore_var,
+
+                value=opt,
+
+            text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(0, 8))
+
+
+
+        # Marketplaces (listbox-style, max 5). Click a site to mark it, then
+
+        # click Remove to remove the marked site(s).
+
+        ctk.CTkLabel(var_frame, text="Marketplaces:", text_color=("#18181B", "#F4F4F5")).grid(
+
+            row=3, column=0, sticky="nw", padx=6, pady=3
+
+        )
+
+        mp_frame = ctk.CTkFrame(var_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        mp_frame.grid(row=3, column=1, sticky="ew", padx=6, pady=3)
+
+        mp_frame.columnconfigure(0, weight=1)
+
+
+
+        self.pc_mp_scroll = ctk.CTkScrollableFrame(mp_frame, height=80, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.pc_mp_scroll.grid(row=0, column=0, columnspan=3, sticky="ew")
+
+        self.pc_mp_selected = set()
+
+        saved_mps = self.price_checker.get_config().get("marketplaces", [])
+
+        if not saved_mps:
+
+            saved_mps = list(DEFAULT_MARKETPLACES)
+
+        for mp in saved_mps:
+
+            btn = ctk.CTkButton(
+
+                self.pc_mp_scroll,
+
+                text=mp,
+
+                command=lambda m=mp: self._on_pc_toggle_marketplace(m),
+
+            fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5"))
+
+            btn.pack(fill="x", padx=2, pady=2)
+
+            self.pc_mp_buttons.append(btn)
+
+        self._refresh_mp_buttons()
+
+
+
+        mp_input = ctk.CTkFrame(mp_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        mp_input.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(12, 6))
+
+        mp_input.columnconfigure(0, weight=1)
+
+        ctk.CTkEntry(
+
+            mp_input, textvariable=self.pc_custom_mp_var, width=24
+
+        , fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A")).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+
+        ctk.CTkButton(
+
+            mp_input, text="Add", width=70,
+
+            command=self._on_pc_add_marketplace,
+
+        fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5")).grid(row=0, column=1, padx=(0, 4))
+
+        ctk.CTkButton(
+
+            mp_input, text="Remove", width=70,
+
+            command=self._on_pc_remove_selected_marketplaces,
+
+        fg_color=("#27272A", "#27272A"), hover_color=("#27272A", "#27272A"), text_color=("#18181B", "#F4F4F5")).grid(row=0, column=2)
+
+
+
+        # Price History Window
+
+        ctk.CTkLabel(var_frame, text="Price History Window:", text_color=("#18181B", "#F4F4F5")).grid(
+
+            row=4, column=0, sticky="w", padx=6, pady=3
+
+        )
+
+        tf_frame = ctk.CTkFrame(var_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        tf_frame.grid(row=4, column=1, sticky="w", padx=6, pady=3)
+
+        self.pc_timeframe_combo = ctk.CTkComboBox(
+
+            tf_frame,
+
+            variable=self.pc_timeframe_var,
+
+            values=DEFAULT_TIMEFRAMES,
+
+            width=160,
+
+            command=lambda _v: self._on_pc_timeframe_changed(),
+
+        )
+
+        self.pc_timeframe_combo.pack(side="left")
+
+        self.pc_custom_days_entry = ctk.CTkEntry(
+
+            tf_frame, textvariable=self.pc_custom_days_var, width=60
+
+        , fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"))
+
+        self.pc_custom_days_label = ctk.CTkLabel(tf_frame, text="days", text_color=("#18181B", "#F4F4F5"))
+
+        self._on_pc_timeframe_changed()  # set initial visibility
+
+        self.pc_timeframe_var.trace_add(
+
+            "write", lambda *_: self._on_pc_timeframe_changed()
+
+        )
+
+
+
+        # ---- Key Bind Label ----
+
+        self.pc_bind_label_frame = ctk.CTkFrame(self.pc_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.pc_bind_label_frame.grid(row=2, column=0, sticky="ew", **self.pad)
+
+        self.pc_bind_label_frame.columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            self.pc_bind_label_frame,
+            textvariable=self.pc_keybind_var,
+            text_color=("#18181B", "#F4F4F5"),
+            font=("Segoe UI", 12),
+            justify="center",
+        ).grid(row=0, column=0, sticky="ew", padx=6, pady=3)
+
+        ctk.CTkLabel(
+            self.pc_bind_label_frame,
+            text="Hover an item in Diablo II and press its hotkey (F8 price check / F9 quick list).",
+            text_color=("#18181B", "#F4F4F5"),
+            font=("Segoe UI", 12, "bold"),
+            justify="center",
+        ).grid(row=1, column=0, sticky="ew", padx=6, pady=(0, 3))
+
+
+
+
+
+        # ---- Price Check Result area (shown only in API mode) ----
+
+        self.pc_result_frame = ctk.CTkFrame(self.pc_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=2)
+
+        self.pc_result_frame.grid(row=3, column=0, sticky="nsew", **self.pad)
+
+        self.pc_result_frame.columnconfigure(0, weight=1)
+
+        self.pc_result_frame.rowconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+
+            self.pc_result_frame,
+
+            text="AI Response / Price Check Result:",
+
+            text_color=("#18181B", "#F4F4F5"),
+
+            font=("Segoe UI", 11, "bold"),
+
+        ).grid(row=0, column=0, sticky="w", padx=6, pady=(4, 2))
+
+        self.pc_result_text = ctk.CTkTextbox(
+            self.pc_result_frame,
+            height=220,
+            font=("Consolas", 12),
+            fg_color=("#FFFFFF", "#18181B"),
+            border_color=("#E4E4E7", "#27272A"),
+            border_width=2,
+            text_color=("#18181B", "#F4F4F5"),
+        )
+
+        self.pc_result_text.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 6))
+
+        pc_result_scroll = ctk.CTkScrollbar(
+            self.pc_result_frame, command=self.pc_result_text.yview
+        )
+
+        pc_result_scroll.grid(row=0, column=1, sticky="ns")
+
+        self.pc_result_text.configure(yscrollcommand=pc_result_scroll.set)
+
+
+
+        # Initially hide result area if not in API mode
+
+        if self.pc_mode_var.get() != "api":
+
+            self.pc_result_frame.grid_forget()
+
+
+
+        # Initialize API key field visibility based on saved mode
+
+        self._on_pc_mode_changed()
+
+        self._on_pc_ai_tool_changed()
+
+
+
+
+
+
+        self.scanner_tab = self.notebook.tab("Quick List")
+        self.scanner_tab.configure(fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+
+        self.scanner_tab.columnconfigure(0, weight=1)
+
+        self.scanner_tab.rowconfigure(0, weight=1)
+
+
+
+        self.scanner_scroll = ctk.CTkScrollableFrame(self.scanner_tab, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.scanner_scroll.pack(fill="both", expand=True)
+
+        self.scanner_scroll.columnconfigure(0, weight=1)
+
+
+
+        self.scanner_body = ctk.CTkFrame(self.scanner_scroll, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.scanner_body.pack(fill="both", expand=True, padx=5, pady=5)
+
+        self.scanner_body.columnconfigure(0, weight=1)
+
+
+
+        self.site_frame = ctk.CTkFrame(self.scanner_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.site_frame.pack(pady=(10, 0), padx=10, fill="x")
+
+        ctk.CTkLabel(self.site_frame, text="Trading website:", font=("Segoe UI", 9, "bold"), text_color=("#18181B", "#F4F4F5")).pack(anchor="w", padx=5, pady=(4, 0))
+
+        self.site_var = ctk.StringVar()
+
+        from config import trading_site_options
+
+        opts = trading_site_options(self.cfg)
+
+        site_labels = [label for _key, label in opts]
+
+        site_keys = [key for key, _label in opts]
+
+        self._site_key_by_label = dict(zip(site_labels, site_keys))
+
+        saved_site = self.cfg.get("trading_site", {}).get("site", "")
+
+        saved_label = None
+
+        for label, key in self._site_key_by_label.items():
+
+            if key == saved_site:
+
+                saved_label = label
+
+                break
+
+        if saved_label is None and site_labels:
+
+            saved_label = site_labels[0]
+
+        self.site_var.set(saved_label or "")
+
+        self.site_combo = ctk.CTkComboBox(self.site_frame,
+
+            variable=self.site_var, values=site_labels, width=300, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), button_color=("#3B82F6", "#3B82F6"))
+
+        self.site_combo.pack(anchor="w", padx=5, pady=2)
+
+        self.site_combo.bind("<<ComboboxSelected>>", self.on_site_selected)
+
+
+
+        self.custom_row = ctk.CTkFrame(self.site_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        ctk.CTkLabel(self.custom_row, text="Name:", text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(8, 0))
+
+        self.custom_name_var = ctk.StringVar()
+
+        ctk.CTkEntry(self.custom_row, textvariable=self.custom_name_var, width=20, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A")).pack(
+
+            side="left", padx=6)
+
+        ctk.CTkLabel(self.custom_row, text="URL:", text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(8, 0))
+
+        self.custom_url_var = ctk.StringVar()
+
+        ctk.CTkEntry(self.custom_row, textvariable=self.custom_url_var, width=30, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A")).pack(
+
+            side="left", padx=6)
+
+        ctk.CTkButton(self.custom_row, text="Save site",
+
+            command=self.on_save_custom_site, fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=6)
+
+
+
+        self._refresh_site_combo()
+
+        self.site_combo.bind("<<ComboboxSelected>>", self.on_site_selected)
+
+        self.open_site_btn = ctk.CTkButton(self.site_frame, text="Open site",
+
+            command=self.on_open_site, fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5"))
+
+        self.open_site_btn.pack(side="left", padx=6)
+
+        self.add_site_btn = ctk.CTkButton(self.site_frame, text="Add Custom Site",
+
+            command=self._open_custom_site_dialog, fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5"))
+
+        self.add_site_btn.pack(side="left", padx=6)
+
+
+
+
+
+        # Quick List is key-bind only (F9) - no on-screen button per design.
+        mc_key = self.pc_keybind_var.get() or "F10"
+        self.manual_crop_btn = ctk.CTkButton(self.scanner_body, text=f"Manual Crop Item ({format_hotkey(mc_key)})",
+            command=self.on_manual_crop_item, fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5")).pack(pady=4)
+
+
+
+
+
+        self.ql_instruction_label = ctk.CTkLabel(self.scanner_body,
+            text="",
+            wraplength=460, text_color=("#18181B", "#F4F4F5"), justify="center")
+        self.ql_instruction_label.pack(pady=(10, 0))
+        self._update_ql_instruction()
+
+
+
+        self.custom_site_dialog = None
+
+
+
+        self.settings_tab = self.notebook.tab("Settings")
+        self.settings_tab.configure(fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+
+        self.settings_tab.columnconfigure(0, weight=1)
+
+
+
+        self.settings_scroll = ctk.CTkScrollableFrame(self.settings_tab, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.settings_scroll.pack(fill="both", expand=True)
+
+        self.settings_scroll.columnconfigure(0, weight=1)
+
+
+
+        self.settings_body = ctk.CTkFrame(self.settings_scroll, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.settings_body.pack(fill="both", expand=True, padx=5, pady=5)
+
+        self.settings_body.columnconfigure(0, weight=1)
+
+        for i in range(5):
+
+            self.settings_body.rowconfigure(i, weight=0)
+
+        self.settings_body.rowconfigure(4, weight=1)
+
+
+
+        self.kb_frame = ctk.CTkFrame(self.settings_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.kb_frame.grid(row=0, column=0, sticky="ew", **self.pad)
+
+        self.kb_frame.columnconfigure(0, weight=0)
+
+        self.kb_frame.columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(self.kb_frame, text="Keybinds (click a field, then press a key)", text_color=("#18181B", "#F4F4F5"), font=("Segoe UI", 11, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 6))
+
+        self.bind_vars = {}
+
+        self.bind_entries = {}
+
+        row = 1
+
+        for name, label in [("quick_list_item", "Quick List Item"),
+
+                            ("manual_crop_item", "Manual Crop Item"),
+
+                            ("price_check_item", "Price Check Item"),
+
+                            ("quit", "Quit App")]:
+
+            ctk.CTkLabel(self.kb_frame, text=label, text_color=("#18181B", "#F4F4F5")).grid(
+
+                row=row, column=0, sticky="w", padx=6, pady=3)
+
+            var = ctk.StringVar(value=self._current_bind(name))
+
+            self.bind_vars[name] = var
+
+            entry = ctk.CTkEntry(self.kb_frame, textvariable=var, state="readonly", fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"))
+
+            entry.grid(row=row, column=1, sticky="ew", padx=6, pady=3)
+
+            self.bind_entries[name] = entry
+
+            entry.bind("<Button-1>", lambda e, n=name: self._start_bind_capture(n))
+
+            row += 1
+
+        # Keybinds are applied automatically when a key is captured
+        # (on_apply_binds_silent) - no separate Apply button needed.
+
+
+        self.opt_frame = ctk.CTkFrame(self.settings_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.opt_frame.grid(row=1, column=0, sticky="ew", **self.pad)
+
+        self.close_var = ctk.StringVar(value=self.cfg.get("close_behavior", "minimize"))
+
+        ctk.CTkRadioButton(self.opt_frame, text="On close: exit the app",
+
+            variable=self.close_var, value="exit", text_color=("#18181B", "#F4F4F5")).pack(anchor="w", padx=6, pady=2)
+
+        ctk.CTkRadioButton(self.opt_frame, text="On close: minimize to system tray",
+
+            variable=self.close_var, value="minimize", text_color=("#18181B", "#F4F4F5")).pack(anchor="w", padx=6, pady=2)
+
+        self.startup_var = ctk.BooleanVar(value=self.cfg.get("start_with_windows", False))
+
+        ctk.CTkCheckBox(self.opt_frame, text="Start with Windows",
+
+            variable=self.startup_var, text_color=("#18181B", "#F4F4F5")).pack(anchor="w", padx=6, pady=2)
+
+        self.manual_override_var = ctk.BooleanVar(
+
+            value=self.cfg.get("manual_screenshot_override", False))
+
+        ctk.CTkCheckBox(self.opt_frame, text="Manual screenshot override "
+            "(quick-list always opens region selection)", text_color=("#18181B", "#F4F4F5"),
+            variable=self.manual_override_var,
+            command=self._on_toggle_manual_override).pack(
+            anchor="w", padx=6, pady=(2, 6))
+
+        ctk.CTkButton(self.opt_frame, text="Apply",
+
+            command=self.on_apply_options, fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5")).pack(anchor="w", padx=6, pady=(0, 6))
+
+
+
+        self.theme_frame = ctk.CTkFrame(self.settings_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.theme_frame.grid(row=2, column=0, sticky="ew", **self.pad)
+
+        ctk.CTkLabel(self.theme_frame, text="Theme:", font=("Segoe UI", 9, "bold"), text_color=("#18181B", "#F4F4F5")).grid(row=0, column=0, sticky="w", padx=6, pady=3)
+
+        self.theme_combo_var = ctk.StringVar()
+
+        saved_theme = self.cfg.get("theme", "system")
+
+        # Normalize legacy stored values ("System Default (Auto)") to the
+        # internal "system" so the combo always shows system default correctly.
+        if saved_theme in ("system", "System Default (Auto)"):
+
+            self.theme_combo_var.set("System Default (Auto)")
+
+        elif saved_theme == "dark":
+
+            self.theme_combo_var.set("Dark")
+
+        else:
+
+            self.theme_combo_var.set("Light")
+
+        self.theme_combo = ctk.CTkOptionMenu(
+
+            self.theme_frame,
+
+            variable=self.theme_combo_var,
+
+            values=["System Default (Auto)", "Light", "Dark"],
+
+            width=200,
+
+            command=self._on_theme_changed,
+
+        )
+
+        self.theme_combo.grid(row=0, column=1, sticky="w", padx=6, pady=3)
+
+
+
+        self.src_frame = ctk.CTkFrame(self.settings_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.src_frame.grid(row=3, column=0, sticky="ew", **self.pad)
+
+        ctk.CTkLabel(self.src_frame, text="Window to capture from (matched by title):", text_color=("#18181B", "#F4F4F5"), wraplength=430).pack(anchor="w", padx=6, pady=(4, 0))
+
+        self.source_combo = ctk.CTkComboBox(self.src_frame, width=300, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), button_color=("#3B82F6", "#3B82F6"))
+
+        self.source_combo.pack(anchor="w", padx=6, pady=2)
+
+        self.source_combo.set(self.cfg.get("capture_window_title") or "diablo")
+
+        self.src_btn_frame = ctk.CTkFrame(self.src_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        self.src_btn_frame.pack(anchor="w", padx=6, pady=(0, 6))
+
+        ctk.CTkButton(self.src_btn_frame, text="Refresh list",
+
+            command=self.on_refresh_windows, fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5")).pack(side="left")
+
+        ctk.CTkButton(self.src_btn_frame, text="Apply Capture Source",
+
+            command=self.on_apply_capture_source, fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=6)
+
+
+
+    def _on_pc_model_changed(self, *args):
+
+        self.cfg.setdefault("price_check", {})["gemini_model"] = self.pc_model_var.get()
+
+        save_config(self.cfg)
+
+
+
+    def _start_hotkeys(self):
+
+        if self.hotkey_mgr:
+
+            try:
+
+                self.hotkey_mgr.stop()
+
+            except Exception:
+
+                pass
+
+        handlers = {
+
+            "quick_list_item": self.on_quick_list,
+
+            "manual_crop_item": self.on_manual_crop_item,
+
+            "price_check_item": self.on_price_check,
+
+            "quit": self._on_close,
+
+        }
+
+        self.hotkey_mgr = HotkeyManager(handlers)
+
+        bound = self.hotkey_mgr.start()
+
+        self._set_status("Hotkeys: " + ", ".join(f"{format_hotkey(v)}={_friendly_keybind(k)}" for k, v in bound.items()))
+
+        self._update_quick_list_button_text()
+
+        self._refresh_pc_keybind_label()
+
+
+
+    def _update_quick_list_button_text(self):
+
+        """Update Quick List button text to show current keybinds."""
+
+        ql_key = self.cfg.get("hotkeys", {}).get("quick_list_item", "f9")
+
+        mc_key = self.cfg.get("hotkeys", {}).get("manual_crop_item", "f10")
+
+        if hasattr(self, "manual_crop_btn") and self.manual_crop_btn:
+
+            self.manual_crop_btn.configure(text=f"Manual Crop Item ({format_hotkey(mc_key)})")
+
+        self._update_ql_instruction()
+
+    def _update_ql_instruction(self):
+
+        """Update the quick-list instruction text to reflect the current keybind."""
+
+        ql_key = format_hotkey(self.cfg.get("hotkeys", {}).get("quick_list_item", "f9"))
+
+        mc_key = format_hotkey(self.cfg.get("hotkeys", {}).get("manual_crop_item", "f10"))
+
+        if hasattr(self, "ql_instruction_label") and self.ql_instruction_label:
+
+            self.ql_instruction_label.configure(
+
+                text=f"Hover an item in game, then press {ql_key} to quick-list.\n"
+
+                     f"The tooltip is cropped, copied, and auto-pasted into the trading site's posting form.\n"
+
+                     f"Or press {mc_key} to drag the region manually.\n"
+
+                     f"When cropping manually: drag a rectangle, then press Enter to confirm.")
+
+    def _on_toggle_manual_override(self):
+
+        self.cfg["manual_screenshot_override"] = bool(self.manual_override_var.get())
+
+        save_config(self.cfg)
+
+        if self.cfg["manual_screenshot_override"]:
+
+            self._set_status("Manual screenshot override ON - quick-list "
+
+                             "always opens region selection")
+
+        else:
+
+            self._set_status("Manual screenshot override OFF - quick-list "
+
+                             "auto-detects (manual selection only on failure)")
+
+
+
+    def _minimize_to_tray(self):
+
+        if pystray is None or Image is None:
+
+            self._set_status("Tray icon unavailable (pystray/Pillow not in exe); minimizing to taskbar instead.")
+
+            self.root.iconify()
+
+            return
+
+        try:
+
+            try:
+
+                img = Image.open(resource_path("Logo.png")).convert("RGBA")
+
+                img = img.resize((32, 32), Image.LANCZOS)
+
+            except Exception:
+
+                img = Image.new("RGB", (32, 32), (200, 120, 40))
+
+            self._tray_image = img
+
+            self.root.withdraw()
+
+            if self.tray is None:
+
+                menu = pystray.Menu(
+
+                    pystray.MenuItem("Show", self._show_from_tray, default=True),
+
+                    pystray.MenuItem("Quit", self._quit_from_tray),
+
+                )
+
+                self.tray = pystray.Icon("d2scan", img, APP_TITLE, menu, visible=True)
+
+                threading.Thread(target=self.tray.run, daemon=True).start()
+
+            else:
+
+                self.tray.visible = True
+
+        except Exception as e:
+
+            _log_error("tray failed: " + str(e))
+
+            self._set_status("Tray unavailable (" + str(e) + "); minimizing to taskbar.")
+
+            self.root.iconify()
+
+
+
+    def _show_from_tray(self, icon=None, item=None):
+
+        self.root.after(0, lambda: self.root.deiconify())
+
+
+
+    def _quit_from_tray(self, icon=None, item=None):
+
+        if self.tray:
+
+            self.tray.stop()
+
+        self.root.after(0, self._shutdown)
+
+
+
+    def _on_close(self):
+
+        if not self.cfg.get("close_behavior_prompted", False):
+
+            self._prompt_close_behavior()
+
+            return
+
+        if self.cfg.get("close_behavior", "minimize") == "minimize":
+
+            self._minimize_to_tray()
+
+        else:
+
+            self._shutdown()
+
+
+
+    def _prompt_close_behavior(self):
+
+        choice = messagebox.askyesnocancel(
+
+            "D2TradeHelper - Close behavior",
+
+            "When you close the window, what would you like to do?\\n\\n"
+
+            "  Yes  \\u2192 Minimize to system tray (app keeps running in background)\\n"
+
+            "  No   \\u2192 Exit the app completely\\n"
+
+            "  Cancel \\u2192 Keep the window open",
+
+            icon="question", parent=self.root,
+
+        )
+
+        if choice is None:
+
+            return
+
+        if choice:
+
+            self.cfg["close_behavior"] = "minimize"
+
+        else:
+
+            self.cfg["close_behavior"] = "exit"
+
+        self.cfg["close_behavior_prompted"] = True
+
+        self.close_var.set(self.cfg["close_behavior"])
+
+        save_config(self.cfg)
+
+        if self.cfg["close_behavior"] == "minimize":
+
+            self._minimize_to_tray()
+
+        else:
+
+            self._shutdown()
+
+
+
+    def _shutdown(self):
+
+        if hasattr(self, 'recorder') and self.recorder:
+
+            try:
+
+                self.recorder.stop()
+
+            except Exception as e:
+
+                print(f"[gui] recorder stop failed: {e}")
+
+        if self.hotkey_mgr:
+
+            try:
+
+                self.hotkey_mgr.stop()
+
+            except Exception as e:
+
+                print(f"[gui] hotkey_mgr stop failed: {e}")
+
+        if hasattr(self, 'tray') and self.tray:
+
+            try:
+
+                self.tray.stop()
+
+            except Exception as e:
+
+                print(f"[gui] tray stop failed: {e}")
+
+        try:
+
+            self.root.quit()
+
+            self.root.destroy()
+
+        except tk.TclError:
+
+            pass
+
+        import os
+
+        os._exit(0)
+
+
+
+    def run(self):
+
+        self.root.mainloop()
+
+
+
+
+
+    def _on_pc_mode_changed(self):
+
+        mode = self.pc_mode_var.get()
+
+        is_api = mode == "api"
+
+        if is_api:
+
+            self.pc_api_key_frame.grid(
+
+                row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=(0, 3))
+
+            self.pc_result_frame.grid(
+
+                row=3, column=0, sticky="ew", **self.pad)
+
+            # Auto-fetch models when switching to API mode with a key present
+
+            if self.pc_api_key_var.get().strip():
+
+                self._on_pc_fetch_models()
+
+        else:
+
+            self.pc_api_key_frame.grid_remove()
+
+            self.pc_result_frame.grid_forget()
+
+        if hasattr(self, "pc_model_label"):
+
+            self._on_pc_ai_tool_changed()
+
+
+
+    def _on_pc_api_key_changed(self):
+        """Auto-fetch models when the user types/pastes an API key (API mode)."""
+
+        if self.pc_mode_var.get() != "api":
+
+            return
+
+        api_key = self.pc_api_key_var.get().strip()
+
+        if not api_key:
+
+            self.pc_model_label.grid_remove()
+
+            self.pc_model_combo.grid_remove()
+
+            return
+
+        # Show model field when key is present in API mode
+
+        self.pc_model_label.grid(row=5, column=0, sticky="e", padx=6, pady=3)
+
+        self.pc_model_combo.grid(row=5, column=1, columnspan=2, sticky="ew", padx=6, pady=3)
+
+        self._on_pc_fetch_models()
+
+
+
+    def _on_pc_api_show_toggle(self):
+
+        show = self.pc_api_show_var.get()
+
+        self.pc_api_key_entry.configure(show="" if show else "*")
+
+
+
+    def _on_pc_fetch_models(self):
+
+        import urllib.request, urllib.error, json
+
+        # Only fetch models in API mode (any AI tool can have a model field)
+
+        if self.pc_mode_var.get() != "api":
+
+            return
+
+        api_key = self.pc_api_key_var.get().strip().replace(chr(10), "").replace(chr(13), "")
+
+        if not api_key:
+
+            self.pc_status_var.set("Enter an API key first.")
+
+            return
+
+        self.pc_status_var.set("Fetching models...")
+
+        self.root.update_idletasks()
+
+        def _fetch():
+
+            # Detect provider from API key format (provider-agnostic):
+
+            #   sk-proj-* / sk-*  -> OpenAI-compatible (Bearer auth)
+
+            #   anything else     -> Gemini (query param key)
+
+            if api_key.startswith("sk-"):
+
+                url = "https://api.openai.com/v1/models"
+
+                headers = {"Authorization": f"Bearer {api_key}"}
+
+                parse = lambda data: sorted(
+
+                    m.get("id", "") for m in data.get("data", []) if m.get("id")
+
+                )
+
+            else:
+
+                url = f"https://generativelanguage.googleapis.com/v1/models?key={api_key}"
+
+                headers = {}
+
+                parse = lambda data: sorted(
+
+                    m["name"].replace("models/", "")
+
+                    for m in data.get("models", [])
+
+                    if "generateContent" in m.get("supportedGenerationMethods", [])
+
+                )
+
+            try:
+
+                req = urllib.request.Request(url, headers=headers)
+
+                with urllib.request.urlopen(req, timeout=15) as resp:
+
+                    data = json.loads(resp.read().decode("utf-8"))
+
+                models = parse(data)
+
+                if not models:
+
+                    models = []
+
+                self.root.after(0, lambda: self._on_models_fetched(models, None))
+
+            except urllib.error.HTTPError as e:
+
+                body = e.read().decode("utf-8")
+
+                self.root.after(0, lambda _e=e, _body=body: self._on_models_fetched([], f"HTTP {_e.code}: {_body[:120]}"))
+
+            except Exception as e:
+
+                self.root.after(0, lambda _e=e: self._on_models_fetched([], str(_e)))
+
+        import threading
+
+        t = threading.Thread(target=_fetch, daemon=True)
+
+        t.start()
+
+        self.fetch_thread = t
+
+    def _on_models_fetched(self, models, error):
+
+        if error:
+
+            self.pc_status_var.set(f"Model fetch failed: {error}")
+
+            self.pc_model_combo.configure(values=[])
+
+        else:
+
+            self.pc_model_combo.configure(values=models)
+
+            if models:
+
+                current = self.pc_model_var.get()
+
+                if current not in models:
+
+                    self.pc_model_var.set(models[0])
+
+                    self.cfg.setdefault("price_check", {})["gemini_model"] = models[0]
+
+                self.pc_status_var.set(f"Loaded {len(models)} models.")
+
+            else:
+
+                self.pc_model_var.set("")
+
+                self.pc_status_var.set("No vision-capable models found for this API key.")
+
+
+
+    def _on_pc_add_marketplace(self):
+
+        name = self.pc_custom_mp_var.get().strip()
+
+        if not name:
+
+            return
+
+        existing = [btn.cget("text") for btn in self.pc_mp_buttons]
+
+        if name in existing:
+
+            self._set_status(f"'{name}' is already in the marketplace list.")
+
+            return
+
+        if len(self.pc_mp_buttons) >= 5:
+
+            self._set_status("Maximum of 5 marketplaces reached.")
+
+            return
+
+        btn = ctk.CTkButton(self.pc_mp_scroll, text=name, width=100,
+
+            command=lambda m=name: self._on_pc_toggle_marketplace(m), fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5"))
+
+        btn.pack(fill="x", padx=2, pady=2)
+
+        self.pc_mp_buttons.append(btn)
+
+        self.pc_custom_mp_var.set("")
+
+        self._save_pc_marketplaces()
+
+        self._set_status(f"Added marketplace: {name}")
+
+
+
+    def _on_pc_toggle_marketplace(self, name):
+
+        """Mark/unmark a marketplace for removal (visual toggle)."""
+
+        if name in self.pc_mp_selected:
+
+            self.pc_mp_selected.discard(name)
+
+        else:
+
+            self.pc_mp_selected.add(name)
+
+        self._refresh_mp_buttons()
+
+
+
+    def _refresh_mp_buttons(self):
+
+        for btn in self.pc_mp_buttons:
+
+            nm = btn.cget("text")
+
+            if nm in self.pc_mp_selected:
+
+                btn.configure(border_width=2, border_color="#ffcc00")
+
+            else:
+
+                btn.configure(border_width=0)
+
+
+
+    def _on_pc_remove_selected_marketplaces(self):
+
+        selected = list(self.pc_mp_selected)
+
+        if not selected:
+
+            self._set_status("Select a marketplace to remove.")
+
+            return
+
+        for name in selected:
+
+            for btn in self.pc_mp_buttons[:]:
+
+                if btn.cget("text") == name:
+
+                    btn.destroy()
+
+                    self.pc_mp_buttons.remove(btn)
+
+                    break
+
+            self.pc_mp_selected.discard(name)
+
+        self._save_pc_marketplaces()
+
+        self._set_status("Removed marketplace(s): " + ", ".join(selected))
+
+
+
+    def _save_pc_marketplaces(self):
+
+        """Persist the current marketplace buttons to config and save."""
+
+        remaining = [btn.cget("text") for btn in self.pc_mp_buttons]
+
+        self.price_checker.get_config()["marketplaces"] = remaining
+
+        self.price_checker.save()
+
+
+
+    def _on_pc_timeframe_changed(self):
+
+        is_custom = self.pc_timeframe_var.get() == "Custom"
+
+        if is_custom:
+
+            self.pc_custom_days_entry.pack(side="left", padx=(6, 0))
+
+            self.pc_custom_days_label.pack(side="left", padx=(0, 4))
+
+        else:
+
+            self.pc_custom_days_entry.pack_forget()
+
+            self.pc_custom_days_label.pack_forget()
+
+
+
+    def _on_pc_ai_tool_changed(self):
+
+        selected = self.pc_ai_tool_var.get()
+
+        if selected == "Add custom AI tool...":
+
+            # Reset selection to the current AI tool (look up label from key)
+
+            stored_key = self.price_checker.get_config().get("ai_tool", "gemini")
+
+            stored_label = "Gemini"
+
+            for label, key in self._pc_ai_key_by_label.items():
+
+                if key == stored_key:
+
+                    stored_label = label
+
+                    break
+
+            self.pc_ai_tool_var.set(stored_label)
+
+            self._open_custom_ai_tool_dialog()
+
+            return
+
+        is_api = self.pc_mode_var.get() == "api"
+
+        if is_api and self.pc_api_key_var.get().strip():
+
+            self.pc_model_label.grid(row=5, column=0, sticky="e", padx=6, pady=3)
+
+            self.pc_model_combo.grid(row=5, column=1, columnspan=2, sticky="ew", padx=6, pady=3)
+
+            self.cfg.setdefault("price_check", {})["gemini_model"] = self.pc_model_var.get()
+
+            # Re-fetch models when switching AI tool with a key present
+
+            self._on_pc_fetch_models()
+
+        else:
+
+            self.pc_model_label.grid_remove()
+
+            self.pc_model_combo.grid_remove()
+
+
+
+    def _on_pc_model_changed(self, *args):
+
+        self.cfg.setdefault("price_check", {})["gemini_model"] = self.pc_model_var.get()
+
+        save_config(self.cfg)
+
+
+
+    def _open_custom_ai_tool_dialog(self):
+
+        dialog = ctk.CTkToplevel(self.root, fg_color=("#FFFFFF", "#18181B"))
+
+        dialog.title("Add Custom AI Tool")
+
+        try:
+
+            dialog.iconbitmap(resource_path("Logo.ico"))
+
+        except Exception:
+
+            pass
+
+        dialog.transient(self.root)
+
+        dialog.grab_set()
+
+        dialog.resizable(False, False)
+
+        dialog.update_idletasks()
+
+        x = self.root.winfo_rootx() + 50
+
+        y = self.root.winfo_rooty() + 50
+
+        dialog.geometry(f"450x460+{x}+{y}")
+
+        # Clear any stale values from previous use
+
+        self.pc_custom_ai_name_var.set("")
+
+        self.pc_custom_ai_url_var.set("")
+
+        self.pc_custom_ai_keybind_var.set("ctrl+shift+o")
+
+
+
+        frame = ctk.CTkFrame(dialog, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        frame.pack(fill="both", expand=True, padx=24, pady=20)
+
+        frame.columnconfigure(0, weight=0)
+        frame.columnconfigure(1, weight=1)
+
+        dialog_label_font = ("Segoe UI", 12, "bold")
+        entry_font = ("Segoe UI", 11)
+
+        ctk.CTkLabel(frame, text="AI Tool Name:", text_color=("#18181B", "#F4F4F5"), font=dialog_label_font).grid(row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 10))
+
+        name_entry = ctk.CTkEntry(frame, textvariable=self.pc_custom_ai_name_var, width=260, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
+
+        name_entry.grid(row=0, column=1, sticky="ew", pady=(0, 10), padx=(0, 0))
+
+        ctk.CTkLabel(frame, text="URL:", text_color=("#18181B", "#F4F4F5"), font=dialog_label_font).grid(row=1, column=0, sticky="w", padx=(0, 12), pady=10)
+
+        url_entry = ctk.CTkEntry(frame, textvariable=self.pc_custom_ai_url_var, width=260, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
+
+        url_entry.grid(row=1, column=1, sticky="ew", pady=10, padx=(0, 0))
+
+        ctk.CTkLabel(frame, text="New chat keybind:", text_color=("#18181B", "#F4F4F5"), font=dialog_label_font).grid(row=2, column=0, sticky="w", padx=(0, 12), pady=10)
+
+        key_entry = ctk.CTkEntry(frame, textvariable=self.pc_custom_ai_keybind_var, width=260, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
+
+        key_entry.grid(row=2, column=1, sticky="ew", pady=10, padx=(0, 0))
+
+        ctk.CTkLabel(frame, text="Example: My Gemini - https://gemini.google.com - ctrl+shift+o", text_color=("#18181B", "#F4F4F5"), font=("Segoe UI", 13), wraplength=380).grid(row=3, column=0, columnspan=2, sticky="ew", padx=(0, 0), pady=(0, 14))
+
+        btn_frame = ctk.CTkFrame(frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        btn_frame.grid(row=4, column=0, columnspan=2, pady=10)
+
+
+
+        def _save():
+
+            name = self.pc_custom_ai_name_var.get().strip()
+
+            url = self.pc_custom_ai_url_var.get().strip()
+
+            new_chat_keybind = self.pc_custom_ai_keybind_var.get().strip()
+
+            if not name:
+
+                self._set_status("Give the AI tool a name.")
+
+                return
+
+            if not url:
+
+                self._set_status("Enter a URL for the AI tool.")
+
+                return
+
+            if not url.lower().startswith(("http://", "https://")):
+
+                url = "https://" + url
+
+            try:
+
+                key = self.price_checker.save_custom_ai_tool(name, url, new_chat_keybind)
+
+                save_config(self.cfg)
+
+                ai_options = self.price_checker.get_ai_tool_options()
+
+                ai_labels = [label for _key, label, _url, _kb in ai_options]
+
+                ai_keys = [key for key, _label, _url, _kb in ai_options]
+
+                self.pc_ai_tool_combo["values"] = ai_labels
+
+                self._pc_ai_key_by_label = dict(zip(ai_labels, ai_keys))
+
+                for lbl, k in zip(ai_labels, ai_keys):
+
+                    if k == key:
+
+                        self.pc_ai_tool_var.set(lbl)
+
+                        break
+
+                dialog.destroy()
+
+                self._set_status(f"Custom AI tool '{name}' saved.")
+
+            except ValueError as e:
+
+                self._set_status(str(e))
+
+
+
+        ctk.CTkButton(btn_frame, text="Save", command=_save, fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(0, 10))
+
+        ctk.CTkButton(btn_frame, text="Cancel", command=dialog.destroy, fg_color=("#27272A", "#27272A"), hover_color=("#27272A", "#27272A"), text_color=("#18181B", "#F4F4F5")).pack(side="left")
+
+
+
+        dialog.wait_window(dialog)
+
+
+
+    def on_price_check(self):
+
+        pc_cfg = self.price_checker.get_config()
+
+        pc_cfg["mode"] = self.pc_mode_var.get()
+
+        ai_label = self.pc_ai_tool_var.get()
+
+        pc_cfg["ai_tool"] = self._pc_ai_key_by_label.get(ai_label, "gemini")
+
+        pc_cfg["api_key"] = self.pc_api_key_var.get().strip().replace("\n", "").replace("\r", "")
+
+        pc_cfg["platform"] = "PC"
+
+        pc_cfg["ladder_status"] = self.pc_ladder_var.get()
+
+        pc_cfg["hardcore_status"] = self.pc_hardcore_var.get()
+
+        pc_cfg["marketplaces"] = [btn.cget("text") for btn in self.pc_mp_buttons]
+
+        if not pc_cfg["marketplaces"]:
+
+            pc_cfg["marketplaces"] = list(DEFAULT_MARKETPLACES)
+
+        tf = self.pc_timeframe_var.get()
+
+        pc_cfg["timeframe"] = tf
+
+        if tf == "Custom":
+
+            try:
+
+                days = int(self.pc_custom_days_var.get().strip())
+
+                if days < 1:
+
+                    days = 1
+
+            except ValueError:
+
+                days = 7
+
+            pc_cfg["custom_timeframe_days"] = days
+
+            pc_cfg["timeframe"] = f"Last {days} Days"
+
+        pc_cfg["new_chat_each_time"] = (self.pc_new_chat_var.get() == "New chat each time")
+
+        self.price_checker.save()
+
+
+
+        variables = {
+
+            "PLATFORM": pc_cfg["platform"],
+            "GAME_MODE": pc_cfg["ladder_status"],
+
+            "MODE_TYPE": pc_cfg["hardcore_status"],
+
+            "TARGET_MARKETPLACES": ", ".join(pc_cfg["marketplaces"]),
+
+            "PRICE_HISTORY_WINDOW": pc_cfg["timeframe"],
+
+        }
+
+
+
+        mode = pc_cfg["mode"]
+
+        ai_tool = pc_cfg["ai_tool"]
+
+        api_key = pc_cfg["api_key"]
+
+
+
+        if mode == "api":
+
+            self.pc_result_text.delete("0.0", "end")
+
+            self.pc_result_text.insert("0.0", "Running price check...\n")
+
+        self.pc_status_var.set("Capturing tooltip and contacting AI...")
+
+
+
+        def _on_result(success, message):
+
+            self.root.after(0, lambda: self._pc_on_result(success, message))
+
+
+
+        self.price_checker.run(mode, ai_tool, api_key, variables, _on_result)
+
+
+
+    def _pc_on_result(self, success, message):
+
+        if self.pc_mode_var.get() == "api":
+
+            self.pc_result_text.delete("0.0", "end")
+
+            if success:
+
+                self.pc_result_text.insert("0.0", message)
+
+                self.pc_status_var.set("Price check complete.")
+
+            else:
+
+                self.pc_result_text.insert("0.0", f"Error: {message}")
+
+                self.pc_status_var.set("Price check failed.")
+
+        else:
+
+            if success:
+
+                self.pc_status_var.set("Opened AI tool in browser - paste prompt + screenshot.")
+
+            else:
+
+                self.pc_status_var.set(f"Redirect failed: {message}")
+
+
+
+
+
+    def _refresh_site_combo(self):
+
+        from config import trading_site_options
+
+        opts = trading_site_options(self.cfg)
+
+        labels = [label for _key, label in opts]
+
+        keys = [key for key, _label in opts]
+
+        self._site_key_by_label = dict(zip(labels, keys))
+
+        self.site_combo["values"] = labels
+
+        saved_site = self.cfg.get("trading_site", {}).get("site", "")
+
+        saved_label = None
+
+        for label, key in self._site_key_by_label.items():
+
+            if key == saved_site:
+
+                saved_label = label
+
+                break
+
+        if saved_label is None and labels:
+
+            saved_label = labels[0]
+
+        self.site_var.set(saved_label or "")
+
+
+
+    def _current_bind(self, name):
+
+        combo = self.cfg["hotkeys"].get(name, "F7")
+
+        return format_hotkey(combo)
+
+
+
+    def on_quick_list(self):
+
+        def _run():
+
+            try:
+
+                manual = False
+
+                if self.cfg.get("manual_screenshot_override"):
+
+                    img = self._manual_crop_blocking(
+
+                        "Manual override - drag the tooltip area to post")
+
+                    manual = True
+
+                else:
+
+                    img = self.scanner.capture_item_for_posting()
+
+                    if img is None or img.size == 0:
+
+                        from capture import game_window_found, last_yolo_capture
+
+                        if not game_window_found():
+
+                            self._set_status("Diablo window not found - open the game "
+
+                                            "first (the tool only captures from D2)")
+
+                            return
+
+                        why = last_yolo_capture.get("reason", "no tooltip found")
+
+                        self._set_status(f"Auto-capture failed ({why}) - "
+
+                                         "select the area manually...")
+
+                        img = self._manual_crop_blocking(
+
+                            f"Auto-detect failed ({why}) - drag the tooltip area")
+
+                        manual = True
+
+                if img is None or img.size == 0:
+
+                    self._set_status("Cancelled - nothing was posted.")
+
+                    return
+
+                if manual:
+
+                    desc = f"Manual crop ({img.shape[1]}x{img.shape[0]}px)"
+
+                else:
+
+                    from capture import last_yolo_capture
+
+                    c = last_yolo_capture
+
+                    desc = (f"Tooltip cropped by YOLO v6 (conf {c['conf']:.2f}, "
+
+                            f"{c.get('class_name', 'item')})")
+
+                self._post_crop(img, desc)
+
+            except Exception as e:
+
+                self._set_status(f"Quick-list failed: {e}")
+
+        threading.Thread(target=_run, daemon=True).start()
+
+
+
+    def on_manual_crop_item(self):
+
+        def _run():
+
+            img = self._manual_crop_blocking("Manual crop - drag the tooltip area to post")
+
+            if img is None or img.size == 0:
+
+                self._set_status("Cancelled - nothing was posted.")
+
+                return
+
+            self._post_crop(img, f"Manual crop ({img.shape[1]}x{img.shape[0]}px)")
+
+        threading.Thread(target=_run, daemon=True).start()
+
+
+
+    def on_site_selected(self, event=None):
+
+        from config import trading_site_options, add_custom_site, get_trading_url
+
+        label = self.site_var.get()
+
+        opts = trading_site_options(self.cfg)
+
+        selected_key = None
+
+        for key, lbl in opts:
+
+            if lbl == label:
+
+                selected_key = key
+
+                break
+
+        if selected_key:
+
+            # "New custom site..." selection -> open the add dialog
+
+            if selected_key == "custom:new":
+
+                self.site_var.set("")
+
+                self._open_custom_site_dialog()
+
+                return
+
+            if selected_key.startswith("custom:"):
+
+                self.cfg["trading_site"]["site"] = selected_key
+
+                customs = self.cfg.get("trading_site", {}).get("custom_sites", [])
+
+                for cs in customs:
+
+                    if cs.get("key") == selected_key:
+
+                        self.custom_name_var.set(cs.get("name", ""))
+
+                        self.custom_url_var.set(cs.get("url", ""))
+
+                        break
+
+                self.custom_row.pack(fill="x", padx=8, pady=(2, 6))
+
+            else:
+
+                self.cfg["trading_site"]["site"] = selected_key
+
+                self.custom_row.pack_forget()
+
+            _, url = get_trading_url(self.cfg)
+
+            self.cfg.setdefault("diablo2io", {})["posting_url"] = url
+
+            save_config(self.cfg)
+
+            self._set_status(f"Trading site set to {label}")
+
+
+
+    def on_save_custom_site(self):
+
+        name = self.custom_name_var.get().strip()
+
+        url = self.custom_url_var.get().strip()
+
+        if not name:
+
+            messagebox.showerror("Error", "Please enter a site name")
+
+            return
+
+        if not url:
+
+            messagebox.showerror("Error", "Please enter a URL")
+
+            return
+
+        if not url.lower().startswith(("http://", "https://")):
+
+            url = "https://" + url
+
+        try:
+
+            from config import add_custom_site, get_trading_url
+
+            key = add_custom_site(self.cfg, name, url)
+
+            save_config(self.cfg)
+
+            self._refresh_site_combo()
+
+            self.cfg["trading_site"]["site"] = key
+
+            _, resolved_url = get_trading_url(self.cfg)
+
+            self.cfg.setdefault("diablo2io", {})["posting_url"] = resolved_url
+
+            save_config(self.cfg)
+
+            self.custom_row.pack_forget()
+
+            self._set_status(f"Custom site '{name}' saved and selected")
+
+        except Exception as e:
+
+            messagebox.showerror("Error", f"Failed to save site: {e}")
+
+
+
+    def on_open_site(self):
+
+        from config import get_trading_url
+
+        import os
+
+        _, url = get_trading_url(self.cfg)
+
+        if url:
+
+            os.startfile(url)
+
+            self._set_status(f"Opened {url}")
+
+        else:
+
+            self._set_status("No trading site URL configured")
+
+    def _open_custom_site_dialog(self):
+
+        """Open a dialog to add a new custom trading site.
+
+        Instructs the user to provide a site name and the URL of the trade page.
+
+        """
+
+        dialog = ctk.CTkToplevel(self.root, fg_color=("#FFFFFF", "#18181B"))
+
+        dialog.title("Add Custom Trading Site")
+
+        try:
+
+            dialog.iconbitmap(resource_path("Logo.ico"))
+
+        except Exception:
+
+            pass
+
+        dialog.transient(self.root)
+
+        dialog.grab_set()
+
+        dialog.resizable(False, False)
+
+        dialog.update_idletasks()
+
+        x = self.root.winfo_rootx() + 50
+
+        y = self.root.winfo_rooty() + 50
+
+        dialog.geometry(f"420x400+{x}+{y}")
+
+        frame = ctk.CTkFrame(dialog, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        frame.pack(fill="both", expand=True, padx=24, pady=20)
+
+        frame.columnconfigure(0, weight=0)
+        frame.columnconfigure(1, weight=1)
+
+        dialog_label_font = ("Segoe UI", 12, "bold")
+        entry_font = ("Segoe UI", 11)
+
+        ctk.CTkLabel(frame, text="Site Name:", text_color=("#18181B", "#F4F4F5"), font=dialog_label_font).grid(row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 10))
+
+        name_var = ctk.StringVar()
+
+        name_entry = ctk.CTkEntry(frame, textvariable=name_var, width=260, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
+
+        name_entry.grid(row=0, column=1, sticky="ew", pady=(0, 10), padx=(0, 0))
+
+        ctk.CTkLabel(frame, text="Trade Page URL:", text_color=("#18181B", "#F4F4F5"), font=dialog_label_font).grid(row=1, column=0, sticky="w", padx=(0, 12), pady=10)
+
+        url_var = ctk.StringVar()
+
+        url_entry = ctk.CTkEntry(frame, textvariable=url_var, width=260, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
+
+        url_entry.grid(row=1, column=1, sticky="ew", pady=10, padx=(0, 0))
+
+        ctk.CTkLabel(frame, text="Example: Diablo2.io - https://diablo2.io/posting.php?f=16&mode=post", text_color=("#18181B", "#F4F4F5"), font=("Segoe UI", 13), wraplength=350).grid(row=2, column=0, columnspan=2, sticky="ew", padx=(0, 0), pady=(0, 14))
+
+        btn_frame = ctk.CTkFrame(frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+
+        btn_frame.grid(row=3, column=0, columnspan=2, pady=10)
+
+        def _save():
+
+            name = name_var.get().strip()
+
+            url = url_var.get().strip()
+
+            if not name:
+
+                messagebox.showerror("Error", "Please enter a site name")
+
+                return
+
+            if not url:
+
+                messagebox.showerror("Error", "Please enter a URL")
+
+                return
+
+            if not url.lower().startswith(("http://", "https://")):
+
+                url = "https://" + url
+
+            try:
+
+                from config import add_custom_site, get_trading_url
+
+                key = add_custom_site(self.cfg, name, url)
+
+                save_config(self.cfg)
+
+                self._refresh_site_combo()
+
+                self.cfg["trading_site"]["site"] = key
+
+                _, resolved_url = get_trading_url(self.cfg)
+
+                self.cfg.setdefault("diablo2io", {})["posting_url"] = resolved_url
+
+                save_config(self.cfg)
+
+                self.custom_row.pack_forget()
+
+                self._set_status(f"Custom site '{name}' saved and selected")
+
+                dialog.destroy()
+
+            except Exception as e:
+
+                messagebox.showerror("Error", f"Failed to save site: {e}")
+
+        ctk.CTkButton(btn_frame, text="Save", command=_save, fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=6)
+
+        ctk.CTkButton(btn_frame, text="Cancel", command=dialog.destroy, fg_color=("#27272A", "#27272A"), hover_color=("#27272A", "#27272A"), text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=6)
+
+        name_entry.focus_set()
+
+
+
+    def on_apply_binds(self):
+
+        from hotkeys import validate_combo
+
+        for name, var in self.bind_vars.items():
+
+            combo = var.get().strip().lower()
+
+            if not combo:
+
+                messagebox.showerror("Keybinds", f"Empty keybind for '{name}'")
+
+                return
+
+            ok, err = validate_combo(combo)
+
+            if not ok:
+
+                messagebox.showerror("Keybinds",
+
+                    f"Invalid combo '{combo}' for '{name}':\\n{err}")
+
+                return
+
+        for name, var in self.bind_vars.items():
+
+            self.cfg["hotkeys"][name] = var.get().strip().lower()
+
+        save_config(self.cfg)
+
+        self._start_hotkeys()
+
+        self._set_status("Keybinds saved and applied.")
+
+
+
+    def on_apply_options(self):
+
+        from hotkeys import set_start_with_windows
+
+        self.cfg["close_behavior"] = self.close_var.get()
+
+        self.cfg["minimize_to_tray"] = self.close_var.get() == "minimize"
+
+        self.cfg["close_behavior_prompted"] = True
+
+        self.cfg["start_with_windows"] = bool(self.startup_var.get())
+
+        self.cfg["manual_screenshot_override"] = bool(self.manual_override_var.get())
+
+        save_config(self.cfg)
+
+        if not set_start_with_windows(self.startup_var.get()):
+
+            messagebox.showwarning("Options",
+
+                "Could not update the Windows startup entry.")
+
+        self._set_status("Options saved.")
+
+
+
+    def on_refresh_windows(self):
+
+        self.source_combo.set(self.cfg.get("capture_window_title") or "diablo")
+
+        self._set_status("Capture source refreshed.")
+
+
+
+    def on_apply_capture_source(self):
+
+        self.cfg["capture_window_title"] = self.source_combo.get()
+
+        save_config(self.cfg)
+
+        self._set_status(f"Capture source set to: {self.cfg['capture_window_title']}")
+
+
+
+    def _start_bind_capture(self, name):
+
+        if self._bind_listener is not None:
+
+            try:
+
+                self._bind_listener.stop()
+
+            except Exception:
+
+                pass
+
+            self._bind_listener = None
+
+        var = self.bind_vars[name]
+
+        entry = self.bind_entries[name]
+
+        var.set("Press a key... (Esc to Cancel)")
+
+        pressed_mods = set()
+
+        finished = [False]
+
+
+
+        from pynput import keyboard
+
+
+
+        def _finish(combo):
+
+            finished[0] = True
+
+            listener.stop()
+
+            self._bind_listener = None
+
+
+
+            def _apply():
+
+                formatted = format_hotkey(combo)
+                var.set(formatted)
+
+                self.on_apply_binds_silent(name, formatted)
+
+            try:
+
+                self.root.after(0, _apply)
+
+            except RuntimeError:
+
+                pass
+
+
+
+        def on_press(key):
+
+            try:
+
+                kname = key.name or ""
+
+            except AttributeError:
+
+                kname = key.char or ""
+
+            kname = kname.lower()
+
+            base = kname.replace("_l", "").replace("_r", "").replace("_gr", "")
+
+            if base in ("ctrl", "control", "alt", "shift", "cmd", "win"):
+
+                pressed_mods.add({"control": "ctrl"}.get(base, base))
+
+                return
+
+            if kname == "escape":
+
+                listener.stop()
+
+                self._bind_listener = None
+
+
+
+                def _restore():
+
+                    var.set(self._current_bind(name))
+
+                try:
+
+                    self.root.after(0, _restore)
+
+                except RuntimeError:
+
+                    pass
+
+                return
+
+            key_part = kname if len(kname) == 1 else kname
+
+            mods = [m for m in ("ctrl", "alt", "shift") if m in pressed_mods]
+
+            combo = "+".join(mods + [key_part])
+
+            _finish(combo)
+
+
+
+        listener = keyboard.Listener(on_press=on_press)
+
+        self._bind_listener = listener
+
+        listener.daemon = True
+
+        listener.start()
+
+
+
+    def on_apply_binds_silent(self, name, combo):
+
+        from hotkeys import validate_combo
+
+        ok, err = validate_combo(combo)
+
+        if not ok:
+
+            messagebox.showerror("Keybinds", f"Cannot use '{combo}': {err}")
+
+            var = self.bind_vars[name]
+
+            var.set(self._current_bind(name))
+
+            return
+
+        self.cfg["hotkeys"][name] = combo
+
+        save_config(self.cfg)
+
+        self._start_hotkeys()
+
+        self._update_ql_instruction()
+
+        self._set_status(f"Keybind set: {name} = {combo}")
+
+
+
+    def _open_crop_dialog(self, img_bgr, title, on_done):
+
+        def _build():
+
+            try:
+
+                CropDialog(self.root, img_bgr, title, on_done)
+
+            except Exception as e:
+
+                _log_error(f"CropDialog failed: {e}")
+
+                try:
+
+                    on_done(None)
+
+                except Exception:
+
+                    pass
+
+        try:
+
+            self.root.after(0, _build)
+
+        except RuntimeError:
+
+            on_done(None)
+
+
+
+    def _manual_crop_blocking(self, title):
+
+        from capture import capture_full_window
+
+        img, _rect = capture_full_window()
+
+        if img is None:
+
+            self._set_status("Diablo window not found - open the game first")
+
+            return None
+
+        done = threading.Event()
+
+        holder = {}
+
+
+
+        def _done(crop):
+
+            holder["crop"] = crop
+
+            done.set()
+
+
+
+        self._open_crop_dialog(img, title, _done)
+
+        while not done.wait(timeout=0.5):
+
+            try:
+
+                if not self.root.winfo_exists():
+
+                    return None
+
+            except RuntimeError:
+
+                return None
+
+        return holder.get("crop")
+
+
+
+    def _post_crop(self, img, source_desc):
+
+        import cv2
+
+        from PIL import Image
+
+        from config import get_trading_url
+
+        _, url = get_trading_url(self.cfg)
+
+        os.startfile(url)
+
+        focus_browser_window(url)
+
+        pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+
+        self._set_status(f"{source_desc} - posting page opened")
+
+
+
+        def _clipboard_then_paste():
+
+            try:
+
+                if not copy_image_to_clipboard(pil):
+
+                    self._set_status(f"Opened {url} - clipboard copy failed; "
+
+                                     "check that pywin32 is installed")
+
+                    return
+
+                from hotkeys import focus_and_paste
+
+                focus_and_paste(url)
+
+            except Exception as e:
+
+                self._set_status(f"Quick-list failed: {e}")
+
+
+
+        threading.Thread(target=_clipboard_then_paste, daemon=True).start()
+
+
+
+        def _ocr_later():
+
+            try:
+
+                item = self.scanner.parse_item_from_image(img)
+
+                if item.get("name") and item["name"] != "Unknown":
+
+                    self.recorder._merge_item(item)
+
+                    self._refresh_item_log()
+
+            except Exception:
+
+                pass
+
+        threading.Thread(target=_ocr_later, daemon=True).start()
+
+
+
+    def _on_toggle_manual_override(self):
+
+        self.cfg["manual_screenshot_override"] = bool(self.manual_override_var.get())
+
+        save_config(self.cfg)
+
+        if self.cfg["manual_screenshot_override"]:
+
+            self._set_status("Manual screenshot override ON - quick-list "
+
+                             "always opens region selection")
+
+        else:
+
+            self._set_status("Manual screenshot override OFF - quick-list "
+
+                             "auto-detects (manual selection only on failure)")
+
+
+
+    def _minimize_to_tray(self):
+
+        if pystray is None or Image is None:
+
+            self._set_status("Tray icon unavailable (pystray/Pillow not in exe); minimizing to taskbar instead.")
+
+            self.root.iconify()
+
+            return
+
+        try:
+
+            try:
+
+                img = Image.open(resource_path("Logo.png")).convert("RGBA")
+
+                img = img.resize((32, 32), Image.LANCZOS)
+
+            except Exception:
+
+                img = Image.new("RGB", (32, 32), (200, 120, 40))
+
+            self._tray_image = img
+
+            self.root.withdraw()
+
+            if self.tray is None:
+
+                menu = pystray.Menu(
+
+                    pystray.MenuItem("Show", self._show_from_tray, default=True),
+
+                    pystray.MenuItem("Quit", self._quit_from_tray),
+
+                )
+
+                self.tray = pystray.Icon("d2scan", img, APP_TITLE, menu, visible=True)
+
+                threading.Thread(target=self.tray.run, daemon=True).start()
+
+            else:
+
+                self.tray.visible = True
+
+        except Exception as e:
+
+            _log_error("tray failed: " + str(e))
+
+            self._set_status("Tray unavailable (" + str(e) + "); minimizing to taskbar.")
+
+            self.root.iconify()
+
+
+
+    def _show_from_tray(self, icon=None, item=None):
+
+        self.root.after(0, lambda: self.root.deiconify())
+
+
+
+    def _quit_from_tray(self, icon=None, item=None):
+
+        if self.tray:
+
+            self.tray.stop()
+
+        self.root.after(0, self._shutdown)
+
+
+
+    def _on_close(self):
+
+        if not self.cfg.get("close_behavior_prompted", False):
+
+            self._prompt_close_behavior()
+
+            return
+
+        if self.cfg.get("close_behavior", "minimize") == "minimize":
+
+            self._minimize_to_tray()
+
+        else:
+
+            self._shutdown()
+
+
+
+    def _prompt_close_behavior(self):
+
+        choice = messagebox.askyesnocancel(
+
+            "D2TradeHelper - Close behavior",
+
+            "When you close the window, what would you like to do?\\n\\n"
+
+            "  Yes  \\u2192 Minimize to system tray (app keeps running in background)\\n"
+
+            "  No   \\u2192 Exit the app completely\\n"
+
+            "  Cancel \\u2192 Keep the window open",
+
+            icon="question", parent=self.root,
+
+        )
+
+        if choice is None:
+
+            return
+
+        if choice:
+
+            self.cfg["close_behavior"] = "minimize"
+
+        else:
+
+            self.cfg["close_behavior"] = "exit"
+
+        self.cfg["close_behavior_prompted"] = True
+
+        self.close_var.set(self.cfg["close_behavior"])
+
+        save_config(self.cfg)
+
+        if self.cfg["close_behavior"] == "minimize":
+
+            self._minimize_to_tray()
+
+        else:
+
+            self._shutdown()
+
+
+
+    def _shutdown(self):
+
+        if hasattr(self, 'recorder') and self.recorder:
+
+            try:
+
+                self.recorder.stop()
+
+            except Exception as e:
+
+                print(f"[gui] recorder stop failed: {e}")
+
+        if self.hotkey_mgr:
+
+            try:
+
+                self.hotkey_mgr.stop()
+
+            except Exception as e:
+
+                print(f"[gui] hotkey_mgr stop failed: {e}")
+
+        if hasattr(self, 'tray') and self.tray:
+
+            try:
+
+                self.tray.stop()
+
+            except Exception as e:
+
+                print(f"[gui] tray stop failed: {e}")
+
+        try:
+
+            self.root.quit()
+
+            self.root.destroy()
+
+        except tk.TclError:
+
+            pass
+
+        import os
+
+        os._exit(0)
+
+
+
+    def run(self):
+
+        self.root.mainloop()
+
+
+
+
+
+    def _refresh_pc_keybind_label(self):
+
+        if self.hotkey_mgr and self.hotkey_mgr.listener:
+
+            bound = {k: v for k, v in self.cfg.get("hotkeys", {}).items()
+
+                     if k in self.hotkey_mgr.handlers}
+
+            binds = ", ".join(f"{format_hotkey(v)}={_friendly_keybind(k)}" for k, v in bound.items())
+
+            self.pc_keybind_var.set(binds)
+
+            # Update button text to reflect current keybinds
+
+            self._update_quick_list_button_text()
+
+        else:
+
+            self.pc_keybind_var.set("Hotkeys not loaded")
+
+
+
+    def _set_status(self, text):
+
+        def _update():
+
+            self.pc_status_var.set(text)
+
+            if hasattr(self, "status_var"):
+
+                self.status_var.set(text)
+
+        try:
+
+            self.root.after(0, _update)
+
+        except RuntimeError:
+
+            pass
+
+
+
+
+
+def main():
+
+    ctk.set_appearance_mode("System")
+
+    ctk.set_default_color_theme("blue")
+
+    app = App()
+
+    app.run()
+
+
+
+
+
+if __name__ == "__main__":
+
+    main()
+
+
+

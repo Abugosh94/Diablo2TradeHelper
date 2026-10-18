@@ -1,7 +1,0 @@
-Traceback (most recent call last):
-  File "D:\Addon test\test_import.py", line 3, in <module>
-    import gui
-  File "D:\Addon test\gui.py", line 30, in <module>
-    if getattr(sys, "frozen", False):
-               ^^^
-NameError: name 'sys' is not defined

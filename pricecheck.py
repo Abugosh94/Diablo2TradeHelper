@@ -60,11 +60,11 @@ def load_prompt():
 
 
 def fill_prompt(template, variables):
-    """Replace {variable} placeholders in the prompt template with the
+    """Replace {{variable}} placeholders in the prompt template with the
     user-selected values. Unknown placeholders are left untouched."""
     result = template
     for key, value in variables.items():
-        result = result.replace("{" + key + "}", str(value))
+        result = result.replace("{{" + key + "}}", str(value))
     return result
 
 
@@ -226,14 +226,18 @@ class PriceChecker:
         def _press(key_down, key_up=None):
             """Press and release a single key."""
             user32.keybd_event(key_down, 0, 0, 0)
+            time.sleep(0.05)
             user32.keybd_event(key_down, 0, KEYUP, 0)
+            time.sleep(0.05)
 
         def _press_combo(*keys):
             """Press and release a key combination (e.g. Ctrl+Shift+O)."""
             for k in keys:
                 user32.keybd_event(k, 0, 0, 0)
+                time.sleep(0.05)
             for k in reversed(keys):
                 user32.keybd_event(k, 0, KEYUP, 0)
+                time.sleep(0.05)
 
         def _paste_clipboard():
             """Paste clipboard contents (Ctrl+V)."""
@@ -255,7 +259,12 @@ class PriceChecker:
         already_open = focus_browser_window(url)
 
         if already_open:
+            # Give the window a moment to settle as foreground
+            time.sleep(0.3)
             if new_chat_each_time and new_chat_kb:
+                # Wait for the AI tool page to finish loading before starting
+                # a new chat, so Ctrl+Shift+O lands on a ready input box.
+                self._wait_for_page_ready()
                 # Start a new chat in the existing tab
                 _press_combo(*new_chat_kb)
                 # Give the new chat UI a moment to appear
@@ -266,10 +275,15 @@ class PriceChecker:
             webbrowser.open(url)
             # Give the browser a moment to open the new tab, then focus it
             time.sleep(2.0)
-            focus_browser_window(url)
+            focused = focus_browser_window(url)
+            if focused:
+                time.sleep(0.3)
             # New tab opens on the homepage - start a fresh chat so the
             # conversation doesn't get named after the item
             if new_chat_each_time and new_chat_kb:
+                # Wait for the browser to actually open/load the AI tool tab
+                # before sending the new-chat keybind.
+                self._wait_for_page_ready()
                 _press_combo(*new_chat_kb)
                 time.sleep(2.0)
 
@@ -317,6 +331,41 @@ class PriceChecker:
                     f"--- Prompt ---\n{preview}"
                 )
         on_result(True, msg)
+
+    @staticmethod
+    def _wait_for_page_ready(max_wait=8.0, stable_seconds=0.4):
+        """Wait until the foreground (browser) window shows a stable,
+        non-empty page title, indicating the AI tool page has finished
+        loading and its input/new-chat handler is ready.
+
+        Returns True when the title stabilized, False on timeout.
+        """
+        import ctypes
+        import time
+
+        user32 = ctypes.windll.user32
+
+        def fg_title():
+            hwnd = user32.GetForegroundWindow()
+            if not hwnd:
+                return ""
+            buf = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(hwnd, buf, 512)
+            return buf.value.strip()
+
+        t0 = time.time()
+        last_title, stable_since = None, None
+        while time.time() - t0 < max_wait:
+            title = fg_title()
+            if title and title == last_title:
+                if stable_since is None:
+                    stable_since = time.time()
+                if time.time() - stable_since >= stable_seconds:
+                    return True
+            else:
+                last_title, stable_since = title, None
+            time.sleep(0.1)
+        return False
 
     def _run_api(self, ai_tool, api_key, filled_prompt, pil_img, on_result):
         """Call the selected AI API with the filled prompt + tooltip image."""

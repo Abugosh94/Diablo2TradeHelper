@@ -244,7 +244,7 @@ def get_tooltip_model():
             msg = f"[yolo] model load FAILED ({e}) - using legacy detector"
             print(msg)
             try:
-                from gui import _log_error
+                from gui_ctk import _log_error
                 _log_error(msg)
             except Exception:
                 pass
