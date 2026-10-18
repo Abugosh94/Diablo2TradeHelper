@@ -2566,15 +2566,37 @@ class App:
 
         self.ai_minimize_btn.pack(fill="x", padx=5, pady=5)
 
-        # Start minimized
+        # Start minimized - defer positioning until root window is mapped
+        # so winfo_width() returns the real size, not 0/1.
+        self.root.after_idle(self._position_ai_panel_initial)
 
-        self._hide_ai_panel()
+        # Hide panel when app is minimized, show when restored
+        self.root.bind("<Unmap>", self._on_root_unmap)
+        self.root.bind("<Map>", self._on_root_map)
 
     def _position_ai_panel_initial(self):
 
         """Position the AI panel at the right edge after the root window is mapped."""
 
         self._hide_ai_panel()
+
+    def _on_root_unmap(self, event):
+
+        """Hide the AI panel when the main app window is minimized."""
+
+        if self.ai_panel and self.ai_panel_expanded:
+
+            self._hide_ai_panel()
+
+    def _on_root_map(self, event):
+
+        """Show the AI panel again when the main app window is restored."""
+
+        if self.ai_panel and not self.ai_panel_expanded:
+
+            # Re-position in case window size changed while minimized
+
+            self._hide_ai_panel()
 
     def _toggle_ai_panel(self):
 
