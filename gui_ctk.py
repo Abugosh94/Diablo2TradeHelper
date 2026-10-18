@@ -2466,6 +2466,18 @@ class App:
 
         self.root.after_idle(self._position_ai_panel_initial)
 
+        # Hide until positioned
+
+        self.ai_panel.withdraw()
+
+        # Track window state changes so panel follows the app
+
+        self.root.bind("<Unmap>", self._on_root_unmap)
+
+        self.root.bind("<Map>", self._on_root_map)
+
+        self.root.bind("<Configure>", self._on_root_configure)
+
         # Panel frame
 
         self.ai_panel_frame = ctk.CTkFrame(
@@ -2585,19 +2597,23 @@ class App:
 
         """Hide the AI panel when the main app window is minimized."""
 
-        if self.ai_panel and self.ai_panel_expanded:
+        if self.ai_panel and self.ai_panel.winfo_exists():
 
-            self._hide_ai_panel()
+            self.ai_panel.withdraw()
 
     def _on_root_map(self, event):
 
         """Show the AI panel again when the main app window is restored."""
 
-        if self.ai_panel and not self.ai_panel_expanded:
+        if self.ai_panel and self.ai_panel.winfo_exists():
 
-            # Re-position in case window size changed while minimized
+            if self.ai_panel_expanded:
 
-            self._hide_ai_panel()
+                self._show_ai_panel()
+
+            else:
+
+                self._hide_ai_panel()
 
     def _on_root_configure(self, event):
 
@@ -2611,11 +2627,19 @@ class App:
 
                 if self.ai_panel_expanded:
 
-                    self._show_ai_panel()
+                    x = self.root.winfo_rootx() + self.root.winfo_width()
+
+                    y = self.root.winfo_rooty() + 100
+
+                    self.ai_panel.geometry(f"{self.ai_panel_width}x600+{x}+{y}")
 
                 else:
 
-                    self._hide_ai_panel()
+                    x = self.root.winfo_rootx() + self.root.winfo_width()
+
+                    y = self.root.winfo_rooty() + 100
+
+                    self.ai_panel.geometry(f"{self.ai_panel_minimized_width}x600+{x}+{y}")
 
     def _toggle_ai_panel(self):
 
