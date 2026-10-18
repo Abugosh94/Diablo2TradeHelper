@@ -703,6 +703,13 @@ class App:
 
         self.pc_model_var.trace_add("write", self._on_pc_model_changed)
 
+        ctk.CTkLabel(
+            self.pc_api_key_frame,
+            text="Tip: use a model that can process images (e.g. gpt-4o, gemini-1.5-flash).",
+            text_color=("#18181B", "#F4F4F5"),
+            font=("Segoe UI", 9),
+        ).grid(row=2, column=0, columnspan=3, sticky="w", padx=(0, 6), pady=(0, 6))
+
         self.pc_api_key_frame.grid_remove()
 
 

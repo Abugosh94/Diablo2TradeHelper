@@ -526,10 +526,11 @@ class PriceChecker:
             return True, body  # return raw if we can't parse the expected shape
 
     def _call_openai(self, api_key, prompt, pil_img):
-        """Call the OpenAI ChatGPT API."""
+        """Call the OpenAI ChatGPT API using the model selected in the dropdown."""
         img_b64 = _image_to_base64(pil_img)
+        model = self.cfg.setdefault("price_check", {}).get("gemini_model", "gpt-4o")
         payload = {
-            "model": "gpt-4o",
+            "model": model,
             "messages": [
                 {
                     "role": "user",
