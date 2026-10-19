@@ -2524,6 +2524,24 @@ class App:
 
         self.ai_toggle_btn.pack(side="left", padx=5, pady=5)
 
+        self.ai_undock_btn = ctk.CTkButton(
+
+            self.ai_title_bar,
+
+            text="↗ Undock",
+
+            width=70,
+
+            command=self._undock_ai_panel,
+
+            fg_color=("#6B7280", "#6B7280"),
+
+            hover_color=("#9CA3AF", "#9CA3AF"),
+
+        )
+
+        self.ai_undock_btn.pack(side="right", padx=5, pady=5)
+
         self.ai_title_label = ctk.CTkLabel(
 
             self.ai_title_bar,
@@ -2591,6 +2609,10 @@ class App:
 
         """Position the AI panel at the right edge after the root window is mapped."""
 
+        if not self.ai_panel:
+
+            return
+
         self._hide_ai_panel()
 
     def _on_root_unmap(self, event):
@@ -2625,11 +2647,23 @@ class App:
 
             if event.widget is self.root:
 
+                import time
+
+                now = time.time()
+
+                if hasattr(self, "_last_configure_time"):
+
+                    if now - self._last_configure_time < 0.05:
+
+                        return  # Throttle: max 20 updates/sec
+
+                self._last_configure_time = now
+
+                x = self.root.winfo_rootx() + self.root.winfo_width()
+
+                y = self.root.winfo_rooty() + 100
+
                 if self.ai_panel_expanded:
-
-                    x = self.root.winfo_rootx() + self.root.winfo_width()
-
-                    y = self.root.winfo_rooty() + 100
 
                     self.ai_panel.geometry(f"{self.ai_panel_width}x600+{x}+{y}")
 
@@ -2667,9 +2701,13 @@ class App:
 
         self.ai_panel.geometry(f"{self.ai_panel_width}x600+{x}+{y}")
 
-        self.ai_toggle_btn.configure(text="<")
+        if hasattr(self, "ai_toggle_btn"):
 
-        self.ai_minimize_btn.configure(text="Minimize")
+            self.ai_toggle_btn.configure(text="<")
+
+        if hasattr(self, "ai_minimize_btn"):
+
+            self.ai_minimize_btn.configure(text="Minimize")
 
         self.ai_panel_expanded = True
 
@@ -2691,13 +2729,43 @@ class App:
 
         self.ai_panel.geometry(f"{self.ai_panel_minimized_width}x600+{x}+{y}")
 
-        self.ai_toggle_btn.configure(text=">")
+        if hasattr(self, "ai_toggle_btn"):
 
-        self.ai_minimize_btn.configure(text="...")
+            self.ai_toggle_btn.configure(text=">")
+
+        if hasattr(self, "ai_minimize_btn"):
+
+            self.ai_minimize_btn.configure(text="...")
 
         self.ai_panel_expanded = False
 
         self.ai_panel.deiconify()
+
+    def _undock_ai_panel(self):
+
+        """Undock the AI panel from the app edge to a free-floating window."""
+
+        if not self.ai_panel:
+
+            return
+
+        # Release from docked position - allow it to float freely
+
+        self.ai_panel.attributes("-topmost", True)
+
+        self.ai_panel.deiconify()
+
+        self.ai_panel.lift()
+
+        self.ai_panel_expanded = True
+
+        if hasattr(self, "ai_toggle_btn"):
+
+            self.ai_toggle_btn.configure(text="<")
+
+        if hasattr(self, "ai_minimize_btn"):
+
+            self.ai_minimize_btn.configure(text="Minimize")
 
     def _show_ai_response(self, message):
 
