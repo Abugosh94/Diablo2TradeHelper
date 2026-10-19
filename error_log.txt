@@ -21,3 +21,37 @@ KeyboardInterrupt
 
 [2026-10-18 23:33:42]
 CropDialog failed: invalid color name "#FFFFFF #18181B"
+
+[2026-10-19 01:51:14]
+UNHANDLED: AttributeError: 'App' object has no attribute '_on_pc_api_clear'
+Traceback (most recent call last):
+  File "D:\Addon test\main.py", line 213, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "D:\Addon test\main.py", line 207, in main
+    gui = GuiApp()
+          ^^^^^^^^
+  File "D:\Addon test\gui_ctk.py", line 399, in __init__
+    self._build_ui()
+  File "D:\Addon test\gui_ctk.py", line 673, in _build_ui
+    command=self._on_pc_api_clear,
+            ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'App' object has no attribute '_on_pc_api_clear'
+
+
+[2026-10-19 02:42:45]
+UNHANDLED: KeyboardInterrupt: 
+Traceback (most recent call last):
+  File "D:\Addon test\main.py", line 213, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "D:\Addon test\main.py", line 208, in main
+    gui.run()
+  File "D:\Addon test\gui_ctk.py", line 3677, in run
+    self.root.mainloop()
+  File "C:\Python311\Lib\site-packages\customtkinter\windows\ctk_tk.py", line 170, in mainloop
+    super().mainloop(*args, **kwargs)
+  File "C:\Python311\Lib\tkinter\__init__.py", line 1485, in mainloop
+    self.tk.mainloop(n)
+KeyboardInterrupt
+
