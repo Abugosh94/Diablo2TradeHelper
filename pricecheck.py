@@ -371,25 +371,30 @@ class PriceChecker:
         """Call the selected AI API with the filled prompt + tooltip image.
 
         Works for any AI tool: built-in (gemini, chatgpt) or custom.
-        The API URL is looked up from the tool config, and the provider
-        is detected from the key format or tool key.
+        The provider is detected from the API key format (sk-* = OpenAI,
+        anything else = Gemini), independent of the AI tool selected for
+        redirect mode. The model comes from the AI model dropdown.
         """
         if not api_key or not api_key.strip():
             on_result(False, "API key is required for API mode.")
             return
 
-        try:
-            url = self._ai_tool_url(ai_tool)
+        api_key = api_key.strip()
 
-            if ai_tool == "gemini":
-                ok, text = self._call_gemini(api_key.strip(), filled_prompt, pil_img)
-            elif ai_tool == "chatgpt":
-                ok, text = self._call_openai(api_key.strip(), filled_prompt, pil_img)
-            else:
-                # Custom AI tool - make a generic API call to its URL
+        try:
+            # Custom AI tool - use its configured URL
+            if ai_tool and ai_tool.startswith("custom:"):
+                url = self._ai_tool_url(ai_tool)
                 ok, text = self._call_custom(
-                    ai_tool, url, api_key.strip(), filled_prompt, pil_img
+                    ai_tool, url, api_key, filled_prompt, pil_img
                 )
+            # Detect provider from API key format, not redirect AI tool selection
+            elif api_key.startswith("sk-"):
+                # OpenAI-compatible API (sk-proj-*, sk-*)
+                ok, text = self._call_openai(api_key, filled_prompt, pil_img)
+            else:
+                # Gemini API (query param key)
+                ok, text = self._call_gemini(api_key, filled_prompt, pil_img)
             on_result(ok, text)
         except Exception as e:  # noqa: BLE001
             on_result(False, f"API call failed: {e}")

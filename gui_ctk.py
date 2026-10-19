@@ -526,9 +526,13 @@ class App:
 
 
 
+        self.root.columnconfigure(0, weight=1)
+        self.root.columnconfigure(1, weight=0)
+        self.root.rowconfigure(0, weight=1)
+
         self.notebook = ctk.CTkTabview(self.root, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
-        self.notebook.pack(fill="both", expand=True, padx=0, pady=0)
+        self.notebook.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
 
 
 
@@ -1421,7 +1425,7 @@ class App:
 
         self.theme_frame.grid(row=2, column=0, sticky="ew", **self.pad)
 
-        ctk.CTkLabel(self.theme_frame, text="Theme:", font=("Segoe UI", 9, "bold"), text_color=("#18181B", "#F4F4F5")).grid(row=0, column=0, sticky="w", padx=6, pady=3)
+        ctk.CTkLabel(self.theme_frame, text="Theme:", font=("Segoe UI", 11), text_color=("#18181B", "#F4F4F5")).grid(row=0, column=0, sticky="w", padx=6, pady=3)
 
         self.theme_combo_var = ctk.StringVar()
 
@@ -2455,50 +2459,26 @@ class App:
         """
 
         self.ai_panel = ctk.CTkToplevel(self.root)
-
-        self.ai_panel.overrideredirect(True)
-
-        self.ai_panel.attributes("-topmost", True)
-
-        # Position at right edge of main window, starting minimized (outside app bounds)
-
-        # Defer geometry until the root window is mapped so winfo_width() is correct.
-
+        self.ai_panel.overrideredirect(False)
+        self.ai_panel.attributes("-topmost", False)
+        # Position at right edge of main window
         self.root.after_idle(self._position_ai_panel_initial)
-
         # Hide until positioned
-
         self.ai_panel.withdraw()
-
         # Track window state changes so panel follows the app
-
         self.root.bind("<Unmap>", self._on_root_unmap)
-
         self.root.bind("<Map>", self._on_root_map)
-
         self.root.bind("<Configure>", self._on_root_configure)
-
-        # Panel frame
-
-        self.ai_panel_frame = ctk.CTkFrame(
-
-            self.ai_panel,
-
-            fg_color=("#1a1a1a", "#1a1a1a"),
-
-            border_color=("#333333", "#333333"),
-
-            border_width=1,
-
-        )
-
-        self.ai_panel_frame.pack(fill="both", expand=True)
-
+        # Apply app logo to drawer
+        try:
+            self.ai_panel.iconbitmap(resource_path("Logo.ico"))
+        except Exception:
+            pass
         # Title bar with toggle button
 
         self.ai_title_bar = ctk.CTkFrame(
 
-            self.ai_panel_frame, fg_color=("#2d2d2d", "#2d2d2d"), height=30
+            self.ai_panel, fg_color=("#F3F4F6", "#27272A"), height=30
 
         )
 
@@ -2510,9 +2490,9 @@ class App:
 
             self.ai_title_bar,
 
-            text=">",
+            text="←",
 
-            width=30,
+            width=40,
 
             command=self._toggle_ai_panel,
 
@@ -2525,21 +2505,13 @@ class App:
         self.ai_toggle_btn.pack(side="left", padx=5, pady=5)
 
         self.ai_undock_btn = ctk.CTkButton(
-
             self.ai_title_bar,
-
             text="↗ Undock",
-
             width=70,
-
             command=self._undock_ai_panel,
-
             fg_color=("#6B7280", "#6B7280"),
-
             hover_color=("#9CA3AF", "#9CA3AF"),
-
         )
-
         self.ai_undock_btn.pack(side="right", padx=5, pady=5)
 
         self.ai_title_label = ctk.CTkLabel(
@@ -2548,62 +2520,104 @@ class App:
 
             text="AI Response",
 
-            text_color=("#F4F4F5", "#F4F4F5"),
+            text_color=("#18181B", "#D9D9D9"),
 
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 14, "bold"),
 
         )
 
-        self.ai_title_label.pack(side="left", padx=5)
+        self.ai_title_label.pack(side="top", padx=5, pady=2)
 
         # Response text area
 
         self.ai_response_text = ctk.CTkTextbox(
-
-            self.ai_panel_frame,
-
+            self.ai_panel,
             font=("Consolas", 11),
-
-            fg_color=("#1a1a1a", "#1a1a1a"),
-
-            border_color=("#333333", "#333333"),
-
+            fg_color=("#FFFFFF", "#1a1a1a"),
+            border_color=("#E4E4E7", "#27272A"),
             border_width=1,
-
-            text_color=("#F4F4F5", "#F4F4F5"),
-
+            text_color=("#18181B", "#D9D9D9"),
         )
-
         self.ai_response_text.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # Minimize button at bottom
+        # Start visible by default
+        self.ai_panel_expanded = True
+        # Start visible by default
+        self.ai_panel_expanded = True
 
-        self.ai_minimize_btn = ctk.CTkButton(
+    def _toggle_ai_panel(self):
 
-            self.ai_panel_frame,
+        """Toggle the AI response panel between expanded and hidden."""
 
-            text="Minimize",
+        if self.ai_panel_expanded:
 
-            command=self._hide_ai_panel,
+            self._hide_ai_panel()
 
-            fg_color=("#404040", "#404040"),
+        else:
 
-            hover_color=("#505050", "#505050"),
+            self._show_ai_panel()
 
-            text_color=("#F4F4F5", "#F4F4F5"),
+    def _show_ai_panel(self):
 
-        )
+        """Show the AI response panel at the right edge."""
 
-        self.ai_minimize_btn.pack(fill="x", padx=5, pady=5)
+        if not self.ai_panel:
 
-        # Start minimized - defer positioning until root window is mapped
-        # so winfo_width() returns the real size, not 0/1.
-        self.root.after_idle(self._position_ai_panel_initial)
+            return
 
-        # Hide panel when app is minimized, show when restored
-        self.root.bind("<Unmap>", self._on_root_unmap)
-        self.root.bind("<Map>", self._on_root_map)
-        self.root.bind("<Configure>", self._on_root_configure)
+        self.ai_panel.deiconify()
+
+        self.ai_panel.lift()
+
+        self.ai_panel.geometry(f"350x600+{self.root.winfo_rootx() + self.root.winfo_width()}+{self.root.winfo_rooty() + 100}")
+
+        if hasattr(self, "ai_toggle_btn"):
+
+            self.ai_toggle_btn.configure(text="←")
+
+        self.ai_panel_expanded = True
+
+    def _hide_ai_panel(self):
+
+        """Collapse the AI response panel to a slim tab."""
+
+        if not self.ai_panel:
+
+            return
+
+        self.ai_panel.geometry(f"40x600+{self.root.winfo_rootx() + self.root.winfo_width()}+{self.root.winfo_rooty() + 100}")
+
+        if hasattr(self, "ai_toggle_btn"):
+
+            self.ai_toggle_btn.configure(text="→")
+
+        self.ai_panel_expanded = False
+
+    def _undock_ai_panel(self):
+
+        """Undock the AI panel from the app edge to a free-floating window."""
+
+        if not self.ai_panel:
+
+            return
+
+        self.ai_panel.attributes("-topmost", True)
+
+        self.ai_panel.lift()
+
+    def _show_ai_response(self, message):
+
+        """Display the AI response in the drawer panel and expand it."""
+
+        if not self.ai_panel:
+
+            return
+
+        self.ai_response_text.delete("0.0", "end")
+
+        self.ai_response_text.insert("0.0", message)
+
+        self._show_ai_panel()
 
     def _position_ai_panel_initial(self):
 
@@ -2613,7 +2627,7 @@ class App:
 
             return
 
-        self._hide_ai_panel()
+        self._show_ai_panel()
 
     def _on_root_unmap(self, event):
 
@@ -2643,21 +2657,7 @@ class App:
 
         if self.ai_panel and self.ai_panel.winfo_exists():
 
-            # Only re-position if the root window itself changed (not children)
-
             if event.widget is self.root:
-
-                import time
-
-                now = time.time()
-
-                if hasattr(self, "_last_configure_time"):
-
-                    if now - self._last_configure_time < 0.05:
-
-                        return  # Throttle: max 20 updates/sec
-
-                self._last_configure_time = now
 
                 x = self.root.winfo_rootx() + self.root.winfo_width()
 
@@ -2665,121 +2665,11 @@ class App:
 
                 if self.ai_panel_expanded:
 
-                    self.ai_panel.geometry(f"{self.ai_panel_width}x600+{x}+{y}")
+                    self.ai_panel.geometry(f"350x600+{x}+{y}")
 
                 else:
 
-                    x = self.root.winfo_rootx() + self.root.winfo_width()
-
-                    y = self.root.winfo_rooty() + 100
-
-                    self.ai_panel.geometry(f"{self.ai_panel_minimized_width}x600+{x}+{y}")
-
-    def _toggle_ai_panel(self):
-
-        """Toggle the AI response panel between expanded and minimized."""
-
-        if self.ai_panel_expanded:
-
-            self._hide_ai_panel()
-
-        else:
-
-            self._show_ai_panel()
-
-    def _show_ai_panel(self):
-
-        """Expand the AI response panel to the right, outside the app window."""
-
-        if not self.ai_panel:
-
-            return
-
-        x = self.root.winfo_rootx() + self.root.winfo_width()
-
-        y = self.root.winfo_rooty() + 100
-
-        self.ai_panel.geometry(f"{self.ai_panel_width}x600+{x}+{y}")
-
-        if hasattr(self, "ai_toggle_btn"):
-
-            self.ai_toggle_btn.configure(text="<")
-
-        if hasattr(self, "ai_minimize_btn"):
-
-            self.ai_minimize_btn.configure(text="Minimize")
-
-        self.ai_panel_expanded = True
-
-        self.ai_panel.deiconify()
-
-        self.ai_panel.lift()
-
-    def _hide_ai_panel(self):
-
-        """Collapse the AI response panel to a slim tab at the right edge."""
-
-        if not self.ai_panel:
-
-            return
-
-        x = self.root.winfo_rootx() + self.root.winfo_width()
-
-        y = self.root.winfo_rooty() + 100
-
-        self.ai_panel.geometry(f"{self.ai_panel_minimized_width}x600+{x}+{y}")
-
-        if hasattr(self, "ai_toggle_btn"):
-
-            self.ai_toggle_btn.configure(text=">")
-
-        if hasattr(self, "ai_minimize_btn"):
-
-            self.ai_minimize_btn.configure(text="...")
-
-        self.ai_panel_expanded = False
-
-        self.ai_panel.deiconify()
-
-    def _undock_ai_panel(self):
-
-        """Undock the AI panel from the app edge to a free-floating window."""
-
-        if not self.ai_panel:
-
-            return
-
-        # Release from docked position - allow it to float freely
-
-        self.ai_panel.attributes("-topmost", True)
-
-        self.ai_panel.deiconify()
-
-        self.ai_panel.lift()
-
-        self.ai_panel_expanded = True
-
-        if hasattr(self, "ai_toggle_btn"):
-
-            self.ai_toggle_btn.configure(text="<")
-
-        if hasattr(self, "ai_minimize_btn"):
-
-            self.ai_minimize_btn.configure(text="Minimize")
-
-    def _show_ai_response(self, message):
-
-        """Display the AI response in the slide-out panel and expand it."""
-
-        if not self.ai_panel:
-
-            return
-
-        self.ai_response_text.delete("0.0", "end")
-
-        self.ai_response_text.insert("0.0", message)
-
-        self._show_ai_panel()
+                    self.ai_panel.geometry(f"40x600+{x}+{y}")
 
     def _refresh_site_combo(self):
 

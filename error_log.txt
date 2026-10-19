@@ -55,3 +55,22 @@ Traceback (most recent call last):
     self.tk.mainloop(n)
 KeyboardInterrupt
 
+
+[2026-10-20 01:16:59]
+UNHANDLED: AttributeError: 'CTkToplevel' object has no attribute 'grid_remove'
+Traceback (most recent call last):
+  File "D:\Addon test\main.py", line 213, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "D:\Addon test\main.py", line 207, in main
+    gui = GuiApp()
+          ^^^^^^^^
+  File "D:\Addon test\gui_ctk.py", line 399, in __init__
+    self._build_ui()
+  File "D:\Addon test\gui_ctk.py", line 1164, in _build_ui
+    self._create_ai_response_panel()
+  File "D:\Addon test\gui_ctk.py", line 2601, in _create_ai_response_panel
+    self.ai_panel.grid_remove()
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'CTkToplevel' object has no attribute 'grid_remove'
+
