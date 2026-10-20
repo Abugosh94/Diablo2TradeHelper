@@ -540,6 +540,9 @@ class PriceChecker:
 
         code, body = _try_call(model)
 
+        if not body or not body.strip():
+            return False, "Empty response from API. Please try again."
+
         if code is not None:
             return False, "API request timed out. Please check your connection or API key."
 
@@ -585,9 +588,14 @@ class PriceChecker:
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 body = resp.read().decode("utf-8")
+                if not body or not body.strip():
+                    _log_api("_call_openai", body)
+                    return False, "Empty response from API. Please try again."
                 _log_api("_call_openai", body)
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8")
+            if not body or not body.strip():
+                return False, "API request timed out. Please check your connection or API key."
             _log_api("_call_openai", body)
             return False, "API request timed out. Please check your connection or API key."
         result = json.loads(body)
@@ -635,9 +643,14 @@ class PriceChecker:
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 body = resp.read().decode("utf-8")
+                if not body or not body.strip():
+                    _log_api("_call_nvidia", body)
+                    return False, "Empty response from API. Please try again."
                 _log_api("_call_nvidia", body)
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8")
+            if not body or not body.strip():
+                return False, "API request timed out. Please check your connection or API key."
             _log_api("_call_nvidia", body)
             return False, "API request timed out. Please check your connection or API key."
         result = json.loads(body)
@@ -693,9 +706,14 @@ class PriceChecker:
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 body = resp.read().decode("utf-8")
+                if not body or not body.strip():
+                    _log_api("_call_custom", body)
+                    return False, "Empty response from API. Please try again."
                 _log_api("_call_custom", body)
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8")
+            if not body or not body.strip():
+                return False, "API request timed out. Please check your connection or API key."
             _log_api("_call_custom", body)
             return False, "API request timed out. Please check your connection or API key."
         except Exception as e:
