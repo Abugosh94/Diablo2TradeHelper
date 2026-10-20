@@ -2666,9 +2666,17 @@ class App:
 
             if success:
 
-                self._show_ai_response(message)
-
-                self.pc_status_var.set("Price check complete.")
+                # Guard against empty/None response content from the API
+                if not message or not message.strip():
+                    self._show_ai_response(
+                        "Empty response from API. Please try again."
+                    )
+                    self.pc_status_var.set(
+                        "Empty response from API. Please try again."
+                    )
+                else:
+                    self._show_ai_response(message)
+                    self.pc_status_var.set("Price check complete.")
 
             else:
 
@@ -2961,6 +2969,10 @@ class App:
         """Display the AI response in the panel and expand it."""
         if not self.ai_panel:
             return
+
+        # Guard against empty/None message which causes Tkinter TclError
+        if not message or not message.strip():
+            message = "Empty response from API. Please try again."
 
         self.ai_response_text.delete("0.0", "end")
         self.ai_response_text.insert("0.0", message)
