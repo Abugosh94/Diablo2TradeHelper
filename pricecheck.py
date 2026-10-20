@@ -37,7 +37,7 @@ PROMPT_FILE = "Prompt.txt"
 DEFAULT_AI_TOOLS = [
     # (key, label, url, new_chat_keybind)
     ("gemini", "Gemini", "https://gemini.google.com", "ctrl+shift+o"),
-    ("chatgpt", "ChatGPT", "https://chat.openai.com", "ctrl+shift+o"),
+    ("chatgpt", "ChatGPT", "https://chatgpt.com/", "ctrl+shift+o"),
 ]
 
 DEFAULT_MARKETPLACES = [
@@ -265,6 +265,8 @@ class PriceChecker:
         # Always copy the prompt to clipboard first
         text_to_clipboard(filled_prompt)
 
+        # Step 1: Try to focus an already-open AI tool tab (title match).
+        # This handles the case where the AI tool is the active browser tab.
         # Try to focus an already-open AI tool tab first
         already_open = focus_browser_window(url)
 

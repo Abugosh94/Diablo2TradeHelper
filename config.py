@@ -59,7 +59,7 @@ DEFAULT_CONFIG = {
         }
     },
     "scan": {
-        "save_captures": True,
+        "save_captures": False,  # disabled by default - enable in settings if needed
         "captures_dir": "captures",
     },
     "manual_screenshot_override": False,  # quick-list always opens manual region selection

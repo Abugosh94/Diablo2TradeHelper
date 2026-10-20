@@ -1,6 +1,9 @@
 """Global hotkey handling via pynput + clipboard + Windows startup."""
+import ctypes
 import os
 import threading
+import time
+from ctypes import wintypes
 
 from pynput import keyboard, mouse
 
@@ -213,29 +216,17 @@ def get_start_with_windows():
         return False
 
 
-def focus_browser_window(url_hint=None, timeout=4.0):
-    """Bring the trading-site / AI-tool browser tab to the foreground.
+def _build_title_hints(url_hint=None):
+    """Build a list of case-insensitive substring hints used to match a
+    browser window title against the given AI-tool / trading-site URL.
 
-    os.startfile() / webbrowser.open() open the URL in a NEW TAB, but if the
-    browser window was minimized / behind the game, the tab never becomes
-    visible and the auto-paste lands nowhere. This finds the top-level
-    browser window whose title contains a hint from the URL (domain or page
-    title) and restores + focuses it, so the page is actually visible.
-
-    Best effort: returns True when a window was focused, False otherwise
-    (the paste logic still runs - if the user focuses the browser in time,
-    the paste lands).
+    Returns a list of lowercase hint strings.
     """
-    import ctypes
-    import time
-    import os
-    from ctypes import wintypes
-    from urllib.parse import urlparse
-
     hints = []
     if url_hint:
         low = url_hint.lower()
         try:
+            from urllib.parse import urlparse
             netloc = urlparse(low if "://" in low else "https://" + low).netloc
             if netloc:
                 domain = netloc.replace("www.", "").split(":")[0]
@@ -251,7 +242,7 @@ def focus_browser_window(url_hint=None, timeout=4.0):
                 if "gemini" in low:
                     hints += ["gemini", "google gemini"]
                 elif "chatgpt" in low or "openai" in low:
-                    hints += ["chatgpt", "chat gpt", "openai"]
+                    hints += ["chatgpt", "chat gpt", "openai", "chat.openai.com"]
         except Exception:
             pass
         # Generic trading-site hints
@@ -259,15 +250,32 @@ def focus_browser_window(url_hint=None, timeout=4.0):
                   "trade", "posting", "listing", "sell", "marketplace"]
     else:
         hints = ["diablo2", "diablo.trade", "diablo trade"]
+    return hints
 
-    try:
-        user32 = ctypes.windll.user32
-    except Exception as e:
-        print(f"[hotkeys] focus_browser_window unavailable: {e}")
+
+def foreground_title_matches(url_hint=None):
+    """Return True if the current foreground window's title matches the
+    hints derived from url_hint. Used to verify that a browser window was
+    actually brought to the front before sending keys to it.
+    """
+    import ctypes
+    user32 = ctypes.windll.user32
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
         return False
+    buf = ctypes.create_unicode_buffer(512)
+    user32.GetWindowTextW(hwnd, buf, 512)
+    title = buf.value.strip().lower()
+    if not title:
+        return False
+    hints = _build_title_hints(url_hint)
+    return any(h in title for h in hints)
 
+
+def _find_matching_window(user32, hints, current_pid):
+    """Enum visible windows and return the first hwnd whose title matches
+    any of the hints (and belongs to a different process)."""
     found = []
-    current_pid = os.getpid()
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     def _enum_cb(hwnd, _lparam):
@@ -289,18 +297,75 @@ def focus_browser_window(url_hint=None, timeout=4.0):
     try:
         user32.EnumWindows(_enum_cb, 0)
     except Exception:
-        return False
-    if not found:
+        pass
+    return found[0] if found else None
+
+
+def focus_browser_window(url_hint=None, timeout=3.0):
+    """Bring the trading-site / AI-tool browser tab to the foreground.
+
+    os.startfile() opens the URL in a NEW TAB, but if the browser window was
+    minimized / behind the game, the tab never becomes visible and the
+    auto-paste lands nowhere. This finds a visible window whose title
+    contains a hint from the URL (domain or page title) and restores +
+    focuses it, so the page is actually visible.
+
+    Best effort: returns True when a window was focused, False otherwise
+    (the paste logic still runs - if the user focuses the browser in time,
+    the paste lands).
+    """
+    hints = _build_title_hints(url_hint)
+
+    try:
+        user32 = ctypes.windll.user32
+    except Exception as e:
+        print(f"[hotkeys] focus_browser_window unavailable: {e}")
         return False
 
-    hwnd = found[0]
+    current_pid = os.getpid()
+
+    # Try multiple times: a fullscreen game (Diablo II) can briefly block
+    # SetForegroundWindow or hide the browser window from enumeration on the
+    # first attempt.  After os.startfile() opens the URL, we need a few
+    # retries for the browser to actually create/show the new tab.
+    # Use short per-attempt timeouts so a blocked SetForegroundWindow
+    # doesn't stall on every retry.
+    for _attempt in range(2):
+        hwnd = _find_matching_window(user32, hints, current_pid)
+        if hwnd:
+            if _focus_window(user32, hwnd, 1.5):
+                return True
+            time.sleep(0.3)
+            continue
+        time.sleep(0.3)
+
+    return False
+
+
+def _focus_window(user32, hwnd, timeout):
+    """Maximize + foreground the given hwnd.  Returns True when it is
+    actually the foreground window within timeout seconds.
+
+    Uses AllowSetForegroundWindow + AttachThreadInput to work around
+    fullscreen games (Diablo II) that normally block SetForegroundWindow
+    from other processes.
+    """
     try:
-        # Maximize (not just restore) so the posting page is full-size and
-        # never left minimized behind the game.
         SW_MAXIMIZE = 3
         user32.ShowWindow(hwnd, SW_MAXIMIZE)
-        # Attach to the foreground thread so SetForegroundWindow succeeds
-        fg_thread = user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), None)
+
+        # Allow this process to set foreground - critical when a fullscreen
+        # game (Diablo II) is the current foreground window and would
+        # otherwise block SetForegroundWindow calls from other processes.
+        try:
+            kernel32 = ctypes.windll.kernel32
+            cur_thread = kernel32.GetCurrentThreadId()
+            user32.AllowSetForegroundWindow(cur_thread)
+        except Exception:
+            pass
+
+        fg_thread = user32.GetWindowThreadProcessId(
+            user32.GetForegroundWindow(), None)
         cur_thread = ctypes.windll.kernel32.GetCurrentThreadId()
         attached = False
         try:
@@ -312,7 +377,6 @@ def focus_browser_window(url_hint=None, timeout=4.0):
         finally:
             if attached:
                 user32.AttachThreadInput(fg_thread, cur_thread, False)
-        # Wait until it is actually foreground (or timeout)
         t0 = time.time()
         while time.time() - t0 < timeout:
             if user32.GetForegroundWindow() == hwnd:
@@ -322,6 +386,106 @@ def focus_browser_window(url_hint=None, timeout=4.0):
     except Exception as e:
         print(f"[hotkeys] focus_browser_window failed: {e}")
         return False
+
+
+def focus_browser_window(url_hint=None, timeout=3.0):
+    """Bring the trading-site / AI-tool browser tab to the foreground.
+
+    webbrowser.open() opens the URL in a NEW TAB, but if the browser window
+    was minimized / behind the game, the tab never becomes visible and the
+    auto-paste lands nowhere. This finds a visible window whose title
+    contains a hint from the URL (domain or page title) and restores +
+    focuses it, so the page is actually visible.
+
+    Best effort: returns True when a window was focused, False otherwise
+    (the paste logic still runs - if the user focuses the browser in time,
+    the paste lands).
+    """
+    hints = _build_title_hints(url_hint)
+
+    try:
+        user32 = ctypes.windll.user32
+    except Exception as e:
+        print(f"[hotkeys] focus_browser_window unavailable: {e}")
+        return False
+
+    current_pid = os.getpid()
+
+    # Try multiple times: a fullscreen game (Diablo II) can briefly block
+    # SetForegroundWindow or hide the browser window from enumeration on the
+    # first attempt.  After webbrowser.open() opens the URL, we need a few
+    # retries for the browser to create the tab and update its window title.
+    # Use short per-attempt timeouts so a blocked SetForegroundWindow
+    # doesn't stall on every retry.
+    for _attempt in range(2):
+        hwnd = _find_matching_window(user32, hints, current_pid)
+        if hwnd:
+            if _focus_window(user32, hwnd, 1.5):
+                return True
+            time.sleep(0.3)
+            continue
+        time.sleep(0.3)
+
+    return False
+
+
+def focus_any_browser_window(timeout=3.0):
+    """Find and focus ANY visible browser window as a fallback.
+
+    Used after webbrowser.open() when the AI-tool-specific title hints
+    haven't matched yet (e.g. the page is still loading and the window
+    title hasn't updated).  Looks for common browser indicators in the
+    window title and focuses the first match.
+
+    Returns True when a browser window was focused, False otherwise.
+    """
+    try:
+        user32 = ctypes.windll.user32
+    except Exception as e:
+        print(f"[hotkeys] focus_any_browser_window unavailable: {e}")
+        return False
+
+    current_pid = os.getpid()
+    browser_keywords = [
+        "chrome", "edge", "firefox", "brave", "opera",
+        "browser", "chromium", "safari",
+    ]
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def _enum_cb(hwnd, _lparam):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length == 0:
+            return True
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        title = buf.value.strip().lower()
+        if title and any(k in title for k in browser_keywords):
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value != current_pid:
+                _enum_cb.found = hwnd
+                return False  # stop enumeration
+        return True
+
+    _enum_cb.found = None
+
+    for _attempt in range(3):
+        _enum_cb.found = None
+        try:
+            user32.EnumWindows(_enum_cb, 0)
+        except Exception:
+            pass
+        hwnd = _enum_cb.found
+        if hwnd:
+            if _focus_window(user32, hwnd, 2.0):
+                return True
+        time.sleep(0.3)
+
+    return False
+
+    return False
 
 def wait_for_left_click(timeout=None):
     """Block until the user clicks the left mouse button.

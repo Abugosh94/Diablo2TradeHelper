@@ -1364,8 +1364,10 @@ class App:
 
         self._on_pc_ai_tool_changed()
 
-        # Create the slide-out AI response panel
-        self._create_ai_response_panel()
+        # Create the slide-out AI response panel only in API mode.
+        # In redirect mode the drawer is not needed - results appear in the browser.
+        if self.pc_mode_var.get() == "api":
+            self._create_ai_response_panel()
 
 
 
@@ -1614,6 +1616,15 @@ class App:
             "(quick-list always opens region selection)", text_color=("#18181B", "#F4F4F5"),
             variable=self.manual_override_var,
             command=self._on_toggle_manual_override).pack(
+            anchor="w", padx=6, pady=(2, 6))
+
+        self.save_captures_var = ctk.BooleanVar(
+            value=self.cfg.get("scan", {}).get("save_captures", False))
+
+        ctk.CTkCheckBox(self.opt_frame, text="Save screenshot captures "
+            "(saves captured tooltips to the captures folder)",
+            text_color=("#18181B", "#F4F4F5"),
+            variable=self.save_captures_var).pack(
             anchor="w", padx=6, pady=(2, 6))
 
         ctk.CTkButton(self.opt_frame, text="Apply",
@@ -1987,10 +1998,11 @@ class App:
         if is_api:
 
             self.pc_api_key_frame.grid(
-
                 row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=(0, 3))
 
-
+            # Create the AI drawer if it doesn't exist yet (API mode needs it)
+            if not hasattr(self, "ai_panel") or self.ai_panel is None:
+                self._create_ai_response_panel()
 
             # Auto-fetch models when switching to API mode with a key present
 
@@ -2002,12 +2014,12 @@ class App:
 
             self.pc_api_key_frame.grid_remove()
 
+            # Hide the AI drawer in redirect mode - results appear in the browser
+            if hasattr(self, "ai_panel") and self.ai_panel is not None:
+                self._hide_ai_panel()
 
         if hasattr(self, "pc_model_label"):
-
             self._on_pc_ai_tool_changed()
-
-
 
     def _on_pc_api_key_changed(self):
         """Auto-fetch models when the user types/pastes an API key (API mode)."""
@@ -3451,6 +3463,8 @@ class App:
         self.cfg["start_with_windows"] = bool(self.startup_var.get())
 
         self.cfg["manual_screenshot_override"] = bool(self.manual_override_var.get())
+
+        self.cfg.setdefault("scan", {})["save_captures"] = bool(self.save_captures_var.get())
 
         save_config(self.cfg)
 

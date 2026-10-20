@@ -1291,7 +1291,6 @@ def save_capture(img, name, max_size_mb=1):
     Save image with compression to keep file size under max_size_mb.
     Uses JPEG compression with adaptive quality to stay under max_size_mb.
     """
-    print(f"[DEBUG] save_capture: name={name}, max_size_mb={max_size_mb}MB")
     out_dir = os.path.join(
         app_dir(),
         _cfg["scan"].get("captures_dir", "captures"),
