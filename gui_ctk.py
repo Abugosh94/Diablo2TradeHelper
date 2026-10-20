@@ -94,6 +94,7 @@ _ERROR_MESSAGE_MAP = {
     "connection": "API request timed out. Please check your connection or API key.",
     "model": "Model error: Invalid response format. Please try a different model.",
     "Invalid response format": "Model error: Invalid response format. Please try a different model.",
+    "Empty response from API": "Empty response from API. Please try again.",
 }
 
 
@@ -2655,7 +2656,7 @@ class App:
         if not options:
             options = DIABLO_FLAVOR_MESSAGES
         self.pc_status_var.set(random.choice(options))
-        self._status_cycle_after_id = self.root.after(1000, self._cycle_status_message)
+        self._status_cycle_after_id = self.root.after(500, self._cycle_status_message)
 
     def _pc_on_result(self, success, message):
 
