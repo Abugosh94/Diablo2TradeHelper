@@ -558,10 +558,13 @@ class PriceChecker:
             _log_api("_call_gemini", body)
             return True, body  # return raw if we can't parse the expected shape
 
-    def _call_openai(self, api_key, prompt, pil_img):
-        """Call the OpenAI API using the model selected in the dropdown."""
+    def _call_openai_compatible(self, api_key, base_url, log_label, model, prompt, pil_img):
+        """Call any OpenAI-compatible chat API (OpenAI, NVIDIA NIM, custom tools).
+
+        Shared implementation: same request format, Bearer auth, and response
+        parsing. Only the base URL and log label differ per provider.
+        """
         img_b64 = _image_to_base64(pil_img)
-        model = self.cfg.setdefault("price_check", {}).get("ai_model", "gpt-4o")
         payload = {
             "model": model,
             "messages": [
@@ -580,10 +583,9 @@ class PriceChecker:
             ],
             "max_tokens": 1000,
         }
-        url = "https://api.openai.com/v1/chat/completions"
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
-            url,
+            base_url,
             data=data,
             headers={
                 "Content-Type": "application/json",
@@ -594,86 +596,47 @@ class PriceChecker:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 body = resp.read().decode("utf-8")
                 if not body or not body.strip():
-                    _log_api("_call_openai", body)
+                    _log_api(log_label, body)
                     return False, "Empty response from API. Please try again."
-                _log_api("_call_openai", body)
+                _log_api(log_label, body)
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8")
             if not body or not body.strip():
                 return False, "API request timed out. Please check your connection or API key."
-            _log_api("_call_openai", body)
+            _log_api(log_label, body)
+            return False, "API request timed out. Please check your connection or API key."
+        except Exception as e:
             return False, "API request timed out. Please check your connection or API key."
         result = json.loads(body)
         try:
             text = result["choices"][0]["message"]["content"]
             if not text or not text.strip():
-                _log_api("_call_openai", body)
+                _log_api(log_label, body)
                 return False, "Empty response from API. Please try again."
-            _log_api("_call_openai", body)
+            _log_api(log_label, body)
             return True, text
         except (KeyError, IndexError, TypeError):
-            _log_api("_call_openai", body)
+            _log_api(log_label, body)
             return True, body
+
+    def _call_openai(self, api_key, prompt, pil_img):
+        """Call the OpenAI API using the model selected in the dropdown."""
+        model = self.cfg.setdefault("price_check", {}).get("ai_model", "gpt-4o")
+        return self._call_openai_compatible(
+            api_key, "https://api.openai.com/v1/chat/completions",
+            "_call_openai", model, prompt, pil_img,
+        )
 
     def _call_nvidia(self, api_key, prompt, pil_img):
         """Call the NVIDIA NIM API using the model selected in the dropdown.
 
         NVIDIA NIM is OpenAI-compatible; only the base URL differs.
         """
-        img_b64 = _image_to_base64(pil_img)
         model = self.cfg.setdefault("price_check", {}).get("ai_model", "")
-        payload = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{img_b64}"
-                            },
-                        },
-                    ],
-                }
-            ],
-            "max_tokens": 1000,
-        }
-        url = "https://integrate.api.nvidia.com/v1/chat/completions"
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + api_key,
-            },
+        return self._call_openai_compatible(
+            api_key, "https://integrate.api.nvidia.com/v1/chat/completions",
+            "_call_nvidia", model, prompt, pil_img,
         )
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                body = resp.read().decode("utf-8")
-                if not body or not body.strip():
-                    _log_api("_call_nvidia", body)
-                    return False, "Empty response from API. Please try again."
-                _log_api("_call_nvidia", body)
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8")
-            if not body or not body.strip():
-                return False, "API request timed out. Please check your connection or API key."
-            _log_api("_call_nvidia", body)
-            return False, "API request timed out. Please check your connection or API key."
-        result = json.loads(body)
-        try:
-            text = result["choices"][0]["message"]["content"]
-            if not text or not text.strip():
-                _log_api("_call_nvidia", body)
-                return False, "Empty response from API. Please try again."
-            _log_api("_call_nvidia", body)
-            return True, text
-        except (KeyError, IndexError, TypeError):
-            _log_api("_call_nvidia", body)
-            return True, body
 
     def _call_custom(self, tool_key, url, api_key, prompt, pil_img):
         """Call a custom AI tool API with the filled prompt + tooltip image.
@@ -685,72 +648,27 @@ class PriceChecker:
 
         Works with any AI tool that exposes an OpenAI-compatible chat API.
         """
-        img_b64 = _image_to_base64(pil_img)
         model = self.cfg.setdefault("price_check", {}).get("ai_model", "")
 
         if not model:
             return False, "Model error: Invalid response format. Please try a different model."
 
-        payload = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{img_b64}"
-                            },
-                        },
-                    ],
-                }
-            ],
-            "max_tokens": 1000,
-        }
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + api_key,
-            },
+        ok, result = self._call_openai_compatible(
+            api_key, url, "_call_custom", model, prompt, pil_img,
         )
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                body = resp.read().decode("utf-8")
-                if not body or not body.strip():
-                    _log_api("_call_custom", body)
-                    return False, "Empty response from API. Please try again."
-                _log_api("_call_custom", body)
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8")
-            if not body or not body.strip():
-                return False, "API request timed out. Please check your connection or API key."
-            _log_api("_call_custom", body)
-            return False, "API request timed out. Please check your connection or API key."
-        except Exception as e:
-            return False, "API request timed out. Please check your connection or API key."
-        result = json.loads(body)
-        try:
-            # Try OpenAI-compatible response format first
-            text = result["choices"][0]["message"]["content"]
-            if not text or not text.strip():
-                _log_api("_call_custom", body)
-                return False, "Empty response from API. Please try again."
-            _log_api("_call_custom", body)
-            return True, text
-        except (KeyError, IndexError, TypeError):
-            # Fall back to Gemini-compatible format
+        if not ok:
+            return False, result
+
+        # If OpenAI-compatible parsing returned raw JSON body (parsing failed),
+        # try Gemini-compatible format
+        if isinstance(result, str) and result.strip().startswith("{"):
             try:
-                text = result["candidates"][0]["content"]["parts"][0]["text"]
+                data = json.loads(result)
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
                 if not text or not text.strip():
-                    _log_api("_call_custom", body)
                     return False, "Empty response from API. Please try again."
-                _log_api("_call_custom", body)
                 return True, text
-            except (KeyError, IndexError, TypeError):
-                _log_api("_call_custom", body)
-                return True, body
+            except (KeyError, IndexError, TypeError, json.JSONDecodeError):
+                return True, result
+
+        return True, result
