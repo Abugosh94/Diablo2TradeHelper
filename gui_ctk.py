@@ -213,7 +213,7 @@ class CropDialog(ctk.CTkToplevel):
 
 
 
-        bar = ctk.CTkFrame(self, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        bar = ctk.CTkFrame(self, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         bar.pack(fill="x")
 
@@ -377,6 +377,162 @@ class CropDialog(ctk.CTkToplevel):
 
 
 
+class ScrollableComboBox(ctk.CTkFrame):
+    """A combo box with a scrollable dropdown list for long option lists.
+
+    Behaves like CTkComboBox but the dropdown is a CTkToplevel with a
+    CTkScrollableFrame, so many models can be scrolled through.
+    """
+
+    def __init__(self, master, variable=None, values=None, width=200, height=28,
+                 command=None, fg_color=None, border_color=None, button_color=None,
+                 text_color=None, font=None, dropdown_height=220, **kwargs):
+        super().__init__(master, fg_color="transparent", **kwargs)
+
+        self._values = list(values or [])
+        self._variable = variable or ctk.StringVar()
+        self._command = command
+        self._dropdown_height = dropdown_height
+        self._dropdown = None
+
+        # Configure grid layout: entry takes available space, button fixed
+        self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=0)
+
+        # Entry/display field
+        self.entry = ctk.CTkEntry(
+            self,
+            textvariable=self._variable,
+            height=height,
+            fg_color=fg_color,
+            border_color=border_color,
+            text_color=text_color,
+            font=font,
+        )
+        self.entry.grid(row=0, column=0, sticky="ew", padx=(0, 0), pady=0)
+
+        # Dropdown button
+        self.btn = ctk.CTkButton(
+            self,
+            text="▼",
+            width=height,
+            height=height,
+            command=self._toggle_dropdown,
+            fg_color=button_color or ("#3B82F6", "#3B82F6"),
+            hover_color=("#60A5FA", "#60A5FA"),
+            text_color=("white", "white"),
+            font=font or ("Segoe UI", 12),
+        )
+        self.btn.grid(row=0, column=1, sticky="ns", padx=0, pady=0)
+
+        # Set initial value
+        if self._values and not self._variable.get():
+            self._variable.set(self._values[0])
+
+    def _toggle_dropdown(self):
+        if self._dropdown and self._dropdown.winfo_exists():
+            self._close_dropdown()
+            return
+        self._show_dropdown()
+
+    def _show_dropdown(self):
+        self._dropdown = ctk.CTkToplevel(self)
+        self._dropdown.overrideredirect(True)
+        self._dropdown.attributes("-topmost", True)
+
+        # Position below the entry/button
+        x = self.entry.winfo_rootx()
+        y = self.entry.winfo_rooty() + self.entry.winfo_height()
+
+        # Outer frame with border
+        outer = ctk.CTkFrame(
+            self._dropdown,
+            fg_color=("#E4E4E7", "#27272A"),
+            border_width=0,
+        )
+        outer.pack(fill="both", expand=True, padx=1, pady=1)
+        outer.columnconfigure(0, weight=1)
+
+        # Scrollable frame with options
+        scroll_frame = ctk.CTkScrollableFrame(
+            outer,
+            width=width if hasattr(self, '_dropdown_width') else 200,
+            height=self._dropdown_height,
+            fg_color=("#F8F9FA", "#18181B"),
+            border_color=("#E4E4E7", "#27272A"),
+            border_width=1,
+        )
+        scroll_frame.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+        scroll_frame.columnconfigure(0, weight=1)
+        outer.rowconfigure(0, weight=1)
+
+        self._dropdown_buttons = []
+        for val in self._values:
+            b = ctk.CTkButton(
+                scroll_frame,
+                text=val,
+                anchor="w",
+                fg_color="transparent",
+                hover_color=("#E5E7EB", "#374151"),
+                text_color=("#18181B", "#F4F4F5"),
+                height=28,
+                command=lambda v=val: self._select(v),
+            )
+            b.pack(fill="x", padx=3, pady=1)
+            self._dropdown_buttons.append(b)
+
+        # Position the dropdown
+        self._dropdown.geometry(f"{self.winfo_width()}x{self._dropdown_height}+{x}+{y}")
+
+        # Click outside to close
+        self._dropdown.bind("<FocusOut>", lambda e: self._dropdown.after(150, self._close_dropdown))
+        self._dropdown.focus_set()
+
+    def _select(self, value):
+        self._variable.set(value)
+        self._close_dropdown()
+        if self._command:
+            self._command()
+
+    def _close_dropdown(self):
+        if self._dropdown and self._dropdown.winfo_exists():
+            self._dropdown.destroy()
+        self._dropdown = None
+
+    def configure(self, **kwargs):
+        if "values" in kwargs:
+            self._values = list(kwargs.pop("values"))
+            if self._dropdown and self._dropdown.winfo_exists():
+                self._close_dropdown()
+                self._show_dropdown()
+        if "variable" in kwargs:
+            self._variable = kwargs.pop("variable")
+            self.entry.configure(textvariable=self._variable)
+        super().configure(**kwargs)
+
+    def cget(self, key):
+        if key == "values":
+            return self._values
+        if key == "textvariable":
+            return self._variable
+        return super().cget(key)
+
+    def grid(self, **kwargs):
+        super().grid(**kwargs)
+
+    def pack(self, **kwargs):
+        super().pack(**kwargs)
+
+    def place(self, **kwargs):
+        super().place(**kwargs)
+
+    def set(self, value):
+        self._variable.set(value)
+
+    def get(self):
+        return self._variable.get()
+
+
 class App:
 
     def __init__(self):
@@ -530,7 +686,7 @@ class App:
         self.root.columnconfigure(1, weight=0)
         self.root.rowconfigure(0, weight=1)
 
-        self.notebook = ctk.CTkTabview(self.root, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.notebook = ctk.CTkTabview(self.root, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.notebook.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
 
@@ -552,7 +708,7 @@ class App:
 
 
 
-        self.pc_scroll = ctk.CTkScrollableFrame(self.pc_tab, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.pc_scroll = ctk.CTkScrollableFrame(self.pc_tab, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.pc_scroll.pack(fill="both", expand=True)
 
@@ -560,7 +716,7 @@ class App:
 
 
 
-        self.pc_body = ctk.CTkFrame(self.pc_scroll, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.pc_body = ctk.CTkFrame(self.pc_scroll, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.pc_body.pack(fill="both", expand=True, padx=5, pady=5)
 
@@ -569,7 +725,7 @@ class App:
 
 
 
-        self.pc_mode_frame = ctk.CTkFrame(self.pc_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.pc_mode_frame = ctk.CTkFrame(self.pc_body, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.pc_mode_frame.grid(row=0, column=0, sticky="ew", **self.pad)
 
@@ -603,7 +759,7 @@ class App:
 
 
 
-        self.pc_api_key_frame = ctk.CTkFrame(self.pc_mode_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.pc_api_key_frame = ctk.CTkFrame(self.pc_mode_frame, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.pc_api_key_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=(0, 3))
 
@@ -639,7 +795,7 @@ class App:
 
         self.pc_api_key_entry = ctk.CTkEntry(
 
-            self.pc_api_key_frame, textvariable=self.pc_api_key_var, width=40, show="*", fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"))
+            self.pc_api_key_frame, textvariable=self.pc_api_key_var, width=40, show="*", fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"))
 
         self.pc_api_key_entry.grid(row=0, column=1, sticky="ew", padx=(0, 6))
 
@@ -689,17 +845,16 @@ class App:
 
         self.pc_model_label.grid(row=1, column=0, sticky="e", padx=(0, 6))
 
-        self.pc_model_combo = ctk.CTkComboBox(
-
+        self.pc_model_combo = ScrollableComboBox(
             self.pc_api_key_frame,
-
             variable=self.pc_model_var,
-
             values=[],
-
             width=200,
-
-        fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), button_color=("#3B82F6", "#3B82F6"))
+            fg_color=("#F8F9FA", "#18181B"),
+            border_color=("#E4E4E7", "#27272A"),
+            button_color=("#3B82F6", "#3B82F6"),
+            dropdown_height=220,
+        )
 
         self.pc_model_combo.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(0, 6))
 
@@ -710,7 +865,8 @@ class App:
             text="Tip: use a model that can process images (e.g. gpt-4o, gemini-1.5-flash).",
             text_color=("#18181B", "#F4F4F5"),
             font=("Segoe UI", 12),
-        ).grid(row=2, column=0, columnspan=3, sticky="w", padx=(0, 6), pady=(0, 6))
+            wraplength=500,
+        ).grid(row=2, column=0, columnspan=7, sticky="w", padx=(0, 6), pady=(0, 6))
 
         self.pc_api_key_frame.grid_remove()
 
@@ -894,7 +1050,7 @@ class App:
 
         # ---- Item variables (filled into the AI prompt) ----
 
-        var_frame = ctk.CTkFrame(self.pc_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        var_frame = ctk.CTkFrame(self.pc_body, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         var_frame.grid(row=1, column=0, sticky="ew", **self.pad)
 
@@ -923,7 +1079,7 @@ class App:
 
         )
 
-        ladder_frame = ctk.CTkFrame(var_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        ladder_frame = ctk.CTkFrame(var_frame, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         ladder_frame.grid(row=1, column=1, sticky="w", padx=6, pady=3)
 
@@ -951,7 +1107,7 @@ class App:
 
         )
 
-        hc_frame = ctk.CTkFrame(var_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        hc_frame = ctk.CTkFrame(var_frame, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         hc_frame.grid(row=2, column=1, sticky="w", padx=6, pady=3)
 
@@ -981,7 +1137,7 @@ class App:
 
         )
 
-        mp_frame = ctk.CTkFrame(var_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        mp_frame = ctk.CTkFrame(var_frame, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         mp_frame.grid(row=3, column=1, sticky="ew", padx=6, pady=3)
 
@@ -989,7 +1145,7 @@ class App:
 
 
 
-        self.pc_mp_scroll = ctk.CTkScrollableFrame(mp_frame, height=80, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.pc_mp_scroll = ctk.CTkScrollableFrame(mp_frame, height=80, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.pc_mp_scroll.grid(row=0, column=0, columnspan=3, sticky="ew")
 
@@ -1021,7 +1177,7 @@ class App:
 
 
 
-        mp_input = ctk.CTkFrame(mp_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        mp_input = ctk.CTkFrame(mp_frame, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         mp_input.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(12, 6))
 
@@ -1031,7 +1187,7 @@ class App:
 
             mp_input, textvariable=self.pc_custom_mp_var, width=24
 
-        , fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A")).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        , fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A")).grid(row=0, column=0, sticky="ew", padx=(0, 4))
 
         ctk.CTkButton(
 
@@ -1059,7 +1215,7 @@ class App:
 
         )
 
-        tf_frame = ctk.CTkFrame(var_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        tf_frame = ctk.CTkFrame(var_frame, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         tf_frame.grid(row=4, column=1, sticky="w", padx=6, pady=3)
 
@@ -1083,7 +1239,7 @@ class App:
 
             tf_frame, textvariable=self.pc_custom_days_var, width=60
 
-        , fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"))
+        , fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"))
 
         self.pc_custom_days_label = ctk.CTkLabel(tf_frame, text="days", text_color=("#18181B", "#F4F4F5"))
 
@@ -1099,7 +1255,7 @@ class App:
 
         # ---- Key Bind Label ----
 
-        self.pc_bind_label_frame = ctk.CTkFrame(self.pc_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.pc_bind_label_frame = ctk.CTkFrame(self.pc_body, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.pc_bind_label_frame.grid(row=2, column=0, sticky="ew", **self.pad)
 
@@ -1148,7 +1304,7 @@ class App:
 
 
         self.scanner_tab = self.notebook.tab("Quick List")
-        self.scanner_tab.configure(fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.scanner_tab.configure(fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
 
         self.scanner_tab.columnconfigure(0, weight=1)
@@ -1157,7 +1313,7 @@ class App:
 
 
 
-        self.scanner_scroll = ctk.CTkScrollableFrame(self.scanner_tab, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.scanner_scroll = ctk.CTkScrollableFrame(self.scanner_tab, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.scanner_scroll.pack(fill="both", expand=True)
 
@@ -1165,7 +1321,7 @@ class App:
 
 
 
-        self.scanner_body = ctk.CTkFrame(self.scanner_scroll, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.scanner_body = ctk.CTkFrame(self.scanner_scroll, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.scanner_body.pack(fill="both", expand=True, padx=5, pady=5)
 
@@ -1173,7 +1329,7 @@ class App:
 
 
 
-        self.site_frame = ctk.CTkFrame(self.scanner_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.site_frame = ctk.CTkFrame(self.scanner_body, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.site_frame.pack(pady=(10, 0), padx=10, fill="x")
 
@@ -1211,7 +1367,7 @@ class App:
 
         self.site_combo = ctk.CTkComboBox(self.site_frame,
 
-            variable=self.site_var, values=site_labels, width=300, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), button_color=("#3B82F6", "#3B82F6"))
+            variable=self.site_var, values=site_labels, width=300, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), button_color=("#3B82F6", "#3B82F6"))
 
         self.site_combo.pack(anchor="w", padx=5, pady=2)
 
@@ -1219,13 +1375,13 @@ class App:
 
 
 
-        self.custom_row = ctk.CTkFrame(self.site_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.custom_row = ctk.CTkFrame(self.site_frame, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         ctk.CTkLabel(self.custom_row, text="Name:", text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(8, 0))
 
         self.custom_name_var = ctk.StringVar()
 
-        ctk.CTkEntry(self.custom_row, textvariable=self.custom_name_var, width=20, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A")).pack(
+        ctk.CTkEntry(self.custom_row, textvariable=self.custom_name_var, width=20, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A")).pack(
 
             side="left", padx=6)
 
@@ -1233,7 +1389,7 @@ class App:
 
         self.custom_url_var = ctk.StringVar()
 
-        ctk.CTkEntry(self.custom_row, textvariable=self.custom_url_var, width=30, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A")).pack(
+        ctk.CTkEntry(self.custom_row, textvariable=self.custom_url_var, width=30, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A")).pack(
 
             side="left", padx=6)
 
@@ -1285,14 +1441,14 @@ class App:
 
 
         self.settings_tab = self.notebook.tab("Settings")
-        self.settings_tab.configure(fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.settings_tab.configure(fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
 
         self.settings_tab.columnconfigure(0, weight=1)
 
 
 
-        self.settings_scroll = ctk.CTkScrollableFrame(self.settings_tab, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.settings_scroll = ctk.CTkScrollableFrame(self.settings_tab, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.settings_scroll.pack(fill="both", expand=True)
 
@@ -1300,7 +1456,7 @@ class App:
 
 
 
-        self.settings_body = ctk.CTkFrame(self.settings_scroll, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.settings_body = ctk.CTkFrame(self.settings_scroll, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.settings_body.pack(fill="both", expand=True, padx=5, pady=5)
 
@@ -1314,7 +1470,7 @@ class App:
 
 
 
-        self.kb_frame = ctk.CTkFrame(self.settings_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.kb_frame = ctk.CTkFrame(self.settings_body, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.kb_frame.grid(row=0, column=0, sticky="ew", **self.pad)
 
@@ -1346,7 +1502,7 @@ class App:
 
             self.bind_vars[name] = var
 
-            entry = ctk.CTkEntry(self.kb_frame, textvariable=var, state="readonly", fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"))
+            entry = ctk.CTkEntry(self.kb_frame, textvariable=var, state="readonly", fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"))
 
             entry.grid(row=row, column=1, sticky="ew", padx=6, pady=3)
 
@@ -1360,7 +1516,7 @@ class App:
         # (on_apply_binds_silent) - no separate Apply button needed.
 
 
-        self.opt_frame = ctk.CTkFrame(self.settings_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.opt_frame = ctk.CTkFrame(self.settings_body, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.opt_frame.grid(row=1, column=0, sticky="ew", **self.pad)
 
@@ -1396,7 +1552,7 @@ class App:
 
 
 
-        self.theme_frame = ctk.CTkFrame(self.settings_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.theme_frame = ctk.CTkFrame(self.settings_body, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.theme_frame.grid(row=2, column=0, sticky="ew", **self.pad)
 
@@ -1438,19 +1594,19 @@ class App:
 
 
 
-        self.src_frame = ctk.CTkFrame(self.settings_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.src_frame = ctk.CTkFrame(self.settings_body, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.src_frame.grid(row=3, column=0, sticky="ew", **self.pad)
 
         ctk.CTkLabel(self.src_frame, text="Window to capture from (matched by title):", text_color=("#18181B", "#F4F4F5"), wraplength=430).pack(anchor="w", padx=6, pady=(4, 0))
 
-        self.source_combo = ctk.CTkComboBox(self.src_frame, width=300, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), button_color=("#3B82F6", "#3B82F6"))
+        self.source_combo = ctk.CTkComboBox(self.src_frame, width=300, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), button_color=("#3B82F6", "#3B82F6"))
 
         self.source_combo.pack(anchor="w", padx=6, pady=2)
 
         self.source_combo.set(self.cfg.get("capture_window_title") or "diablo")
 
-        self.src_btn_frame = ctk.CTkFrame(self.src_frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        self.src_btn_frame = ctk.CTkFrame(self.src_frame, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         self.src_btn_frame.pack(anchor="w", padx=6, pady=(0, 6))
 
@@ -2165,7 +2321,7 @@ class App:
 
     def _open_custom_ai_tool_dialog(self):
 
-        dialog = ctk.CTkToplevel(self.root, fg_color=("#FFFFFF", "#18181B"))
+        dialog = ctk.CTkToplevel(self.root, fg_color=("#F8F9FA", "#18181B"))
 
         dialog.title("Add Custom AI Tool")
 
@@ -2201,7 +2357,7 @@ class App:
 
 
 
-        frame = ctk.CTkFrame(dialog, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        frame = ctk.CTkFrame(dialog, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         frame.pack(fill="both", expand=True, padx=24, pady=20)
 
@@ -2213,25 +2369,25 @@ class App:
 
         ctk.CTkLabel(frame, text="AI Tool Name:", text_color=("#18181B", "#F4F4F5"), font=dialog_label_font).grid(row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 10))
 
-        name_entry = ctk.CTkEntry(frame, textvariable=self.pc_custom_ai_name_var, width=260, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
+        name_entry = ctk.CTkEntry(frame, textvariable=self.pc_custom_ai_name_var, width=260, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
 
         name_entry.grid(row=0, column=1, sticky="ew", pady=(0, 10), padx=(0, 0))
 
         ctk.CTkLabel(frame, text="URL:", text_color=("#18181B", "#F4F4F5"), font=dialog_label_font).grid(row=1, column=0, sticky="w", padx=(0, 12), pady=10)
 
-        url_entry = ctk.CTkEntry(frame, textvariable=self.pc_custom_ai_url_var, width=260, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
+        url_entry = ctk.CTkEntry(frame, textvariable=self.pc_custom_ai_url_var, width=260, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
 
         url_entry.grid(row=1, column=1, sticky="ew", pady=10, padx=(0, 0))
 
         ctk.CTkLabel(frame, text="New chat keybind:", text_color=("#18181B", "#F4F4F5"), font=dialog_label_font).grid(row=2, column=0, sticky="w", padx=(0, 12), pady=10)
 
-        key_entry = ctk.CTkEntry(frame, textvariable=self.pc_custom_ai_keybind_var, width=260, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
+        key_entry = ctk.CTkEntry(frame, textvariable=self.pc_custom_ai_keybind_var, width=260, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
 
         key_entry.grid(row=2, column=1, sticky="ew", pady=10, padx=(0, 0))
 
         ctk.CTkLabel(frame, text="Example: My Gemini - https://gemini.google.com - ctrl+shift+o", text_color=("#18181B", "#F4F4F5"), font=("Segoe UI", 13), wraplength=380).grid(row=3, column=0, columnspan=2, sticky="ew", padx=(0, 0), pady=(0, 14))
 
-        btn_frame = ctk.CTkFrame(frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        btn_frame = ctk.CTkFrame(frame, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         btn_frame.grid(row=4, column=0, columnspan=2, pady=10)
 
@@ -2518,7 +2674,7 @@ class App:
         self.ai_response_text = ctk.CTkTextbox(
             parent,
             font=("Consolas", 11),
-            fg_color=("#FFFFFF", "#1a1a1a"),
+            fg_color=("#F8F9FA", "#1a1a1a"),
             border_color=("#E4E4E7", "#27272A"),
             border_width=1,
             text_color=("#18181B", "#D9D9D9"),
@@ -2574,19 +2730,10 @@ class App:
                 x = root_x + root_w
                 y = root_y + int(root_h * 0.05)
 
-        # Clamp the panel to the screen bounds so it stays visible when the
-        # main window is maximized (root_x + root_w can equal the screen
-        # width, which would otherwise push the drawer fully off-screen).
-        screen_w = self.root.winfo_screenwidth()
-        screen_h = self.root.winfo_screenheight()
-        if x + w > screen_w:
-            x = max(0, screen_w - w)
-        if x < 0:
-            x = 0
-        if y + h > screen_h:
-            y = max(0, screen_h - h)
-        if y < 0:
-            y = 0
+        # Note: panel position is computed relative to the main window's
+        # position, so it naturally follows the window to any screen.
+        # Do not clamp to primary screen bounds, or the panel would snap
+        # back to the primary monitor when the app is on a secondary screen.
 
         return f"{w}x{h}+{x}+{y}"
 
@@ -3019,7 +3166,7 @@ class App:
 
         """
 
-        dialog = ctk.CTkToplevel(self.root, fg_color=("#FFFFFF", "#18181B"))
+        dialog = ctk.CTkToplevel(self.root, fg_color=("#F8F9FA", "#18181B"))
 
         dialog.title("Add Custom Trading Site")
 
@@ -3045,7 +3192,7 @@ class App:
 
         dialog.geometry(f"420x400+{x}+{y}")
 
-        frame = ctk.CTkFrame(dialog, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        frame = ctk.CTkFrame(dialog, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         frame.pack(fill="both", expand=True, padx=24, pady=20)
 
@@ -3059,7 +3206,7 @@ class App:
 
         name_var = ctk.StringVar()
 
-        name_entry = ctk.CTkEntry(frame, textvariable=name_var, width=260, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
+        name_entry = ctk.CTkEntry(frame, textvariable=name_var, width=260, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
 
         name_entry.grid(row=0, column=1, sticky="ew", pady=(0, 10), padx=(0, 0))
 
@@ -3067,13 +3214,13 @@ class App:
 
         url_var = ctk.StringVar()
 
-        url_entry = ctk.CTkEntry(frame, textvariable=url_var, width=260, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
+        url_entry = ctk.CTkEntry(frame, textvariable=url_var, width=260, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
 
         url_entry.grid(row=1, column=1, sticky="ew", pady=10, padx=(0, 0))
 
         ctk.CTkLabel(frame, text="Example: Diablo2.io - https://diablo2.io/posting.php?f=16&mode=post", text_color=("#18181B", "#F4F4F5"), font=("Segoe UI", 13), wraplength=350).grid(row=2, column=0, columnspan=2, sticky="ew", padx=(0, 0), pady=(0, 14))
 
-        btn_frame = ctk.CTkFrame(frame, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
+        btn_frame = ctk.CTkFrame(frame, fg_color=("#F8F9FA", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
         btn_frame.grid(row=3, column=0, columnspan=2, pady=10)
 
