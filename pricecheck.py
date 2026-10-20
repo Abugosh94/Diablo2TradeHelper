@@ -392,6 +392,9 @@ class PriceChecker:
             elif api_key.startswith("sk-"):
                 # OpenAI-compatible API (sk-proj-*, sk-*)
                 ok, text = self._call_openai(api_key, filled_prompt, pil_img)
+            elif api_key.startswith("nvapi-"):
+                # NVIDIA NIM API (OpenAI-compatible, Bearer auth)
+                ok, text = self._call_nvidia(api_key, filled_prompt, pil_img)
             else:
                 # Gemini API (query param key)
                 ok, text = self._call_gemini(api_key, filled_prompt, pil_img)
@@ -573,6 +576,54 @@ class PriceChecker:
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8")
             return False, f"OpenAI API error ({e.code}): {body}"
+        result = json.loads(body)
+        try:
+            text = result["choices"][0]["message"]["content"]
+            return True, text
+        except (KeyError, IndexError, TypeError):
+            return True, body
+
+    def _call_nvidia(self, api_key, prompt, pil_img):
+        """Call the NVIDIA NIM API using the model selected in the dropdown.
+
+        NVIDIA NIM is OpenAI-compatible; only the base URL differs.
+        """
+        img_b64 = _image_to_base64(pil_img)
+        model = self.cfg.setdefault("price_check", {}).get("ai_model", "")
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{img_b64}"
+                            },
+                        },
+                    ],
+                }
+            ],
+            "max_tokens": 1000,
+        }
+        url = "https://integrate.api.nvidia.com/v1/chat/completions"
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + api_key,
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                body = resp.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8")
+            return False, f"NVIDIA API error ({e.code}): {body}"
         result = json.loads(body)
         try:
             text = result["choices"][0]["message"]["content"]

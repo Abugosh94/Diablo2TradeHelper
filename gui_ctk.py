@@ -681,8 +681,6 @@ class App:
 
         self.pc_api_clear_btn.grid(row=0, column=4, padx=(6, 0))
 
-
-
         self.pc_model_var = ctk.StringVar(
 
             value=self.price_checker.get_config().get("ai_model", "gpt-4o"))
@@ -756,9 +754,18 @@ class App:
 
         self.ai_panel_expanded = False
 
-        self.ai_panel_width = 450
+        self.ai_panel_width = 400
 
         self.ai_panel_minimized_width = 40
+
+        self.ai_locked = True
+
+        # User-selectable layout mode: "side" (right drawer) or "bottom" (bottom drawer)
+        self.ai_panel_mode = "side"
+
+        self.ai_bottom_height = 250
+
+        self.ai_bottom_minimized_height = 40
 
         self.pc_platform_var = ctk.StringVar(value="PC")
 
@@ -1117,43 +1124,11 @@ class App:
 
 
 
-        # ---- Price Check Result area (shown only in API mode) ----
-
-        self.pc_result_frame = ctk.CTkFrame(self.pc_body, fg_color=("#FFFFFF", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=2)
-
-        self.pc_result_frame.grid(row=3, column=0, sticky="nsew", **self.pad)
-
-        self.pc_result_frame.columnconfigure(0, weight=1)
-
-        self.pc_result_frame.rowconfigure(0, weight=1)
-
-        self.pc_result_text = ctk.CTkTextbox(
-            self.pc_result_frame,
-            height=220,
-            font=("Consolas", 12),
-            fg_color=("#FFFFFF", "#18181B"),
-            border_color=("#E4E4E7", "#27272A"),
-            border_width=2,
-            text_color=("#18181B", "#F4F4F5"),
-        )
-
-        self.pc_result_text.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
-
-        pc_result_scroll = ctk.CTkScrollbar(
-            self.pc_result_frame, command=self.pc_result_text.yview
-        )
-
-        pc_result_scroll.grid(row=0, column=1, sticky="ns")
-
-        self.pc_result_text.configure(yscrollcommand=pc_result_scroll.set)
+        # Price Check Result area removed - AI panel handles results display
 
 
 
-        # Initially hide result area if not in API mode
 
-        if self.pc_mode_var.get() != "api":
-
-            self.pc_result_frame.grid_forget()
 
 
 
@@ -1789,9 +1764,7 @@ class App:
 
                 row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=(0, 3))
 
-            self.pc_result_frame.grid(
 
-                row=3, column=0, sticky="ew", **self.pad)
 
             # Auto-fetch models when switching to API mode with a key present
 
@@ -1803,7 +1776,6 @@ class App:
 
             self.pc_api_key_frame.grid_remove()
 
-            self.pc_result_frame.grid_forget()
 
         if hasattr(self, "pc_model_label"):
 
@@ -1883,15 +1855,31 @@ class App:
 
         def _fetch():
 
-            # Detect provider from API key format (provider-agnostic):
+            # Detect provider from API key prefix (fully automated, no user input):
 
             #   sk-proj-* / sk-*  -> OpenAI-compatible (Bearer auth)
+
+            #   nvapi-*           -> NVIDIA NIM (OpenAI-compatible, Bearer auth)
 
             #   anything else     -> Gemini (query param key)
 
             if api_key.startswith("sk-"):
 
                 url = "https://api.openai.com/v1/models"
+
+                headers = {"Authorization": f"Bearer {api_key}"}
+
+                parse = lambda data: sorted(
+
+                    m.get("id", "") for m in data.get("data", []) if m.get("id")
+
+                )
+
+            elif api_key.startswith("nvapi-"):
+
+                # NVIDIA NIM API (OpenAI-compatible, Bearer auth)
+
+                url = "https://integrate.api.nvidia.com/v1/models"
 
                 headers = {"Authorization": f"Bearer {api_key}"}
 
@@ -2392,11 +2380,8 @@ class App:
 
 
 
-        if mode == "api":
 
-            self.pc_result_text.delete("0.0", "end")
 
-            self.pc_result_text.insert("0.0", "Running price check...\n")
 
         self.pc_status_var.set("Capturing tooltip and contacting AI...")
 
@@ -2416,18 +2401,14 @@ class App:
 
         if self.pc_mode_var.get() == "api":
 
-            self.pc_result_text.delete("0.0", "end")
-
             if success:
 
-                self.pc_result_text.insert("0.0", message)
                 self._show_ai_response(message)
 
                 self.pc_status_var.set("Price check complete.")
 
             else:
 
-                self.pc_result_text.insert("0.0", f"Error: {message}")
 
                 self.pc_status_var.set("Price check failed.")
 
@@ -2448,60 +2429,60 @@ class App:
 
 
     def _create_ai_response_panel(self):
+        """Create the AI response panel as a separate CTkToplevel window.
 
-        """Create a slide-out side panel for AI responses.
-
-        The panel is a separate top-level window positioned at the right
-        edge of the main app window (OUTSIDE the app bounds). It starts
-        minimized (small tab) and expands to the right when opened,
-        never overlapping the app content.
-
+        Always a separate window positioned immediately to the right of the
+        main application. Defaults to Locked mode: no native title bar or
+        frame (overrideredirect=True) so the user cannot drag it
+        independently, and its position is tightly coupled to the main
+        window's movement via the <Configure> binding so it glides alongside
+        instantly with zero drag lag.
         """
+        self.ai_locked = True
 
         self.ai_panel = ctk.CTkToplevel(self.root)
-        self.ai_panel.overrideredirect(False)
+        # Locked mode: remove native title bar/frame - user cannot drag independently
+        self.ai_panel.overrideredirect(True)
         self.ai_panel.attributes("-topmost", False)
-        # Position at right edge of main window
+
+        # Position at right edge of main window after it is mapped
         self.root.after_idle(self._position_ai_panel_initial)
         # Hide until positioned
         self.ai_panel.withdraw()
-        # Track window state changes so panel follows the app
+        # Track window state changes
         self.root.bind("<Unmap>", self._on_root_unmap)
         self.root.bind("<Map>", self._on_root_map)
+        # Tightly couple panel position to main window movement (zero-lag tracking)
         self.root.bind("<Configure>", self._on_root_configure)
         # Apply app logo to drawer
         try:
             self.ai_panel.iconbitmap(resource_path("Logo.ico"))
         except Exception:
             pass
-        # Title bar with toggle button
+        # Build internal UI
+        self._build_ai_panel_ui(self.ai_panel)
 
+        # Start expanded (visible)
+        self.ai_panel_expanded = False
+        self._show_ai_panel()
+
+    def _build_ai_panel_ui(self, parent):
+        """Build the AI panel's internal widgets under the given parent."""
+        # Title bar
         self.ai_title_bar = ctk.CTkFrame(
-
-            self.ai_panel, fg_color=("#F3F4F6", "#27272A"), height=30
-
+            parent, fg_color=("#F3F4F6", "#27272A"), height=30
         )
-
         self.ai_title_bar.pack(fill="x", padx=2, pady=2)
-
         self.ai_title_bar.pack_propagate(False)
 
         self.ai_toggle_btn = ctk.CTkButton(
-
             self.ai_title_bar,
-
             text="←",
-
             width=40,
-
             command=self._toggle_ai_panel,
-
             fg_color=("#3B82F6", "#3B82F6"),
-
             hover_color=("#60A5FA", "#60A5FA"),
-
         )
-
         self.ai_toggle_btn.pack(side="left", padx=5, pady=5)
 
         self.ai_undock_btn = ctk.CTkButton(
@@ -2514,24 +2495,28 @@ class App:
         )
         self.ai_undock_btn.pack(side="right", padx=5, pady=5)
 
-        self.ai_title_label = ctk.CTkLabel(
-
+        # Mode toggle: Side <-> Bottom drawer (user-selectable)
+        self.ai_mode_btn = ctk.CTkButton(
             self.ai_title_bar,
-
-            text="AI Response",
-
-            text_color=("#18181B", "#D9D9D9"),
-
-            font=("Segoe UI", 14, "bold"),
-
+            text="⇄ Bottom" if self.ai_panel_mode == "side" else "⇄ Side",
+            width=70,
+            command=self._toggle_ai_panel_mode,
+            fg_color=("#6B7280", "#6B7280"),
+            hover_color=("#9CA3AF", "#9CA3AF"),
         )
+        self.ai_mode_btn.pack(side="right", padx=5, pady=5)
 
+        self.ai_title_label = ctk.CTkLabel(
+            self.ai_title_bar,
+            text="AI Response",
+            text_color=("#18181B", "#D9D9D9"),
+            font=("Segoe UI", 14, "bold"),
+        )
         self.ai_title_label.pack(side="top", padx=5, pady=2)
 
         # Response text area
-
         self.ai_response_text = ctk.CTkTextbox(
-            self.ai_panel,
+            parent,
             font=("Consolas", 11),
             fg_color=("#FFFFFF", "#1a1a1a"),
             border_color=("#E4E4E7", "#27272A"),
@@ -2540,136 +2525,225 @@ class App:
         )
         self.ai_response_text.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # Start visible by default
-        self.ai_panel_expanded = True
-        # Start visible by default
-        self.ai_panel_expanded = True
+    def _compute_ai_panel_geometry(self, expanded):
+        """Compute the geometry string for the AI panel based on user-selected mode.
+
+        Side drawer: fixed width, 90% of main-window height (5% margin top/bottom),
+        positioned at the right edge.
+        Bottom drawer: full main-window width, fixed height, positioned at bottom edge.
+        When the main window is maximized, the drawer always snaps to the bottom.
+        """
+        if not self.ai_locked:
+            return None
+
+        root_x = self.root.winfo_rootx()
+        root_y = self.root.winfo_rooty()
+        root_w = self.root.winfo_width()
+        root_h = self.root.winfo_height()
+
+        mode = self.ai_panel_mode
+        # When the main window is maximized, always snap the drawer to the
+        # bottom edge regardless of the user-selected side/bottom mode.
+        is_maximized = self.root.state() == "zoomed"
+        use_bottom = (mode == "bottom") or is_maximized
+
+        if use_bottom:
+            # Bottom drawer mode (user-selected, or maximized snap-to-bottom)
+            if expanded:
+                w = root_w
+                h = self.ai_bottom_height
+                x = root_x
+                y = root_y + root_h - self.ai_bottom_height
+            else:
+                w = root_w
+                h = self.ai_bottom_minimized_height
+                x = root_x
+                y = root_y + root_h - self.ai_bottom_minimized_height
+        else:
+            # Side drawer mode (user-selected, default).
+            # Width fixed at 400px; height is 90% of main window height
+            # (5% margin top and bottom).
+            if expanded:
+                w = self.ai_panel_width
+                h = int(root_h * 0.90)
+                x = root_x + root_w
+                y = root_y + int(root_h * 0.05)
+            else:
+                w = self.ai_panel_minimized_width
+                h = int(root_h * 0.90)
+                x = root_x + root_w
+                y = root_y + int(root_h * 0.05)
+
+        # Clamp the panel to the screen bounds so it stays visible when the
+        # main window is maximized (root_x + root_w can equal the screen
+        # width, which would otherwise push the drawer fully off-screen).
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        if x + w > screen_w:
+            x = max(0, screen_w - w)
+        if x < 0:
+            x = 0
+        if y + h > screen_h:
+            y = max(0, screen_h - h)
+        if y < 0:
+            y = 0
+
+        return f"{w}x{h}+{x}+{y}"
+
+    def _apply_ai_panel_layout(self, expanded):
+        """Apply the responsive layout geometry to the AI panel."""
+        if not self.ai_panel or not self.ai_panel.winfo_exists():
+            return
+        geom = self._compute_ai_panel_geometry(expanded)
+        if geom:
+            # Ensure the panel is visible and on top (overrideredirect windows
+            # can lose visibility during parent window moves on Windows)
+            self.ai_panel.deiconify()
+            self.ai_panel.geometry(geom)
+            self.ai_panel.lift()
 
     def _toggle_ai_panel(self):
-
-        """Toggle the AI response panel between expanded and hidden."""
-
+        """Toggle the AI response panel between expanded and hidden (locked mode only)."""
         if self.ai_panel_expanded:
-
             self._hide_ai_panel()
-
         else:
-
             self._show_ai_panel()
 
+    def _toggle_ai_panel_mode(self):
+        """Switch the AI panel between Side and Bottom drawer mode (user choice)."""
+        if self.ai_panel_mode == "side":
+            self.ai_panel_mode = "bottom"
+            self.ai_mode_btn.configure(text="⇄ Side")
+        else:
+            self.ai_panel_mode = "side"
+            self.ai_mode_btn.configure(text="⇄ Bottom")
+
+        # Re-apply layout immediately so the panel snaps to the new position
+        if self.ai_locked and self.ai_panel and self.ai_panel.winfo_exists():
+            self._apply_ai_panel_layout(expanded=self.ai_panel_expanded)
+
     def _show_ai_panel(self):
-
-        """Show the AI response panel at the right edge."""
-
+        """Show the AI response panel (expanded) with responsive side/bottom layout."""
         if not self.ai_panel:
-
             return
 
         self.ai_panel.deiconify()
-
         self.ai_panel.lift()
 
-        self.ai_panel.geometry(f"350x600+{self.root.winfo_rootx() + self.root.winfo_width()}+{self.root.winfo_rooty() + 100}")
+        if self.ai_locked:
+            self._apply_ai_panel_layout(expanded=True)
 
         if hasattr(self, "ai_toggle_btn"):
-
             self.ai_toggle_btn.configure(text="←")
-
         self.ai_panel_expanded = True
 
     def _hide_ai_panel(self):
-
-        """Collapse the AI response panel to a slim tab."""
-
+        """Collapse the AI response panel to a slim tab (locked mode) with responsive layout."""
         if not self.ai_panel:
-
             return
 
-        self.ai_panel.geometry(f"40x600+{self.root.winfo_rootx() + self.root.winfo_width()}+{self.root.winfo_rooty() + 100}")
+        if self.ai_locked:
+            self._apply_ai_panel_layout(expanded=False)
+        else:
+            # Undocked: withdraw the window entirely
+            self.ai_panel.withdraw()
 
         if hasattr(self, "ai_toggle_btn"):
-
             self.ai_toggle_btn.configure(text="→")
-
         self.ai_panel_expanded = False
 
     def _undock_ai_panel(self):
-
-        """Undock the AI panel from the app edge to a free-floating window."""
-
+        """Switch to Undock mode: re-enable window framing so it can be freely dragged."""
         if not self.ai_panel:
-
             return
 
-        self.ai_panel.attributes("-topmost", True)
+        # Re-enable standard window framing (title bar) so the window can be dragged freely
+        self.ai_panel.overrideredirect(False)
 
+        self.ai_locked = False
+
+        # Update buttons: toggle becomes Dock, hide Undock and Mode buttons
+        self.ai_toggle_btn.configure(command=self._dock_ai_panel, text="← Dock")
+        self.ai_undock_btn.pack_forget()
+        self.ai_mode_btn.pack_forget()
+
+        self.ai_panel_expanded = True
+
+        # Make sure it is visible
+        self.ai_panel.deiconify()
         self.ai_panel.lift()
 
-    def _show_ai_response(self, message):
-
-        """Display the AI response in the drawer panel and expand it."""
-
+    def _dock_ai_panel(self):
+        """Switch back to Locked mode: remove frame, snap to side, lock position."""
         if not self.ai_panel:
+            return
 
+        # Remove native title bar/frame - lock position to the main window
+        self.ai_panel.overrideredirect(True)
+
+        self.ai_locked = True
+
+        # Reset pack order for all title bar widgets to avoid packer state issues
+        # after pack_forget cycles during undock/dock transitions
+        self.ai_toggle_btn.pack_forget()
+        self.ai_undock_btn.pack_forget()
+        self.ai_mode_btn.pack_forget()
+        self.ai_title_label.pack_forget()
+
+        self.ai_toggle_btn.pack(side="left", padx=5, pady=5)
+        self.ai_undock_btn.pack(side="right", padx=5, pady=5)
+        self.ai_mode_btn.pack(side="right", padx=5, pady=5)
+        self.ai_title_label.pack(side="top", padx=5, pady=2)
+
+        # Restore button commands
+        self.ai_toggle_btn.configure(command=self._toggle_ai_panel, text="←")
+        self.ai_undock_btn.configure(command=self._undock_ai_panel)
+
+        # Snap back to the side of the main app
+        self.ai_panel_expanded = False
+        self._show_ai_panel()
+
+    def _show_ai_response(self, message):
+        """Display the AI response in the panel and expand it."""
+        if not self.ai_panel:
             return
 
         self.ai_response_text.delete("0.0", "end")
-
         self.ai_response_text.insert("0.0", message)
-
         self._show_ai_panel()
 
     def _position_ai_panel_initial(self):
-
         """Position the AI panel at the right edge after the root window is mapped."""
-
         if not self.ai_panel:
-
             return
-
         self._show_ai_panel()
 
     def _on_root_unmap(self, event):
-
         """Hide the AI panel when the main app window is minimized."""
-
         if self.ai_panel and self.ai_panel.winfo_exists():
-
             self.ai_panel.withdraw()
 
     def _on_root_map(self, event):
-
         """Show the AI panel again when the main app window is restored."""
-
         if self.ai_panel and self.ai_panel.winfo_exists():
-
             if self.ai_panel_expanded:
-
                 self._show_ai_panel()
-
             else:
-
                 self._hide_ai_panel()
 
     def _on_root_configure(self, event):
+        """Tightly couple the locked panel's position to the main window's movement.
 
-        """Re-position the AI panel when the root window moves or resizes."""
-
-        if self.ai_panel and self.ai_panel.winfo_exists():
-
-            if event.widget is self.root:
-
-                x = self.root.winfo_rootx() + self.root.winfo_width()
-
-                y = self.root.winfo_rooty() + 100
-
-                if self.ai_panel_expanded:
-
-                    self.ai_panel.geometry(f"350x600+{x}+{y}")
-
-                else:
-
-                    self.ai_panel.geometry(f"40x600+{x}+{y}")
+        When locked, the panel glides alongside the main window instantly
+        (zero lag) because its X/Y is updated on every <Configure> event.
+        The side/bottom mode is user-controlled (not automatic).
+        """
+        if not self.ai_locked:
+            return
+        if not self.ai_panel or not self.ai_panel.winfo_exists():
+            return
+        if event.widget is self.root:
+            self._apply_ai_panel_layout(expanded=self.ai_panel_expanded)
 
     def _refresh_site_combo(self):
 
