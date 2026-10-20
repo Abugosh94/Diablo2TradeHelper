@@ -452,6 +452,22 @@ class ScrollableComboBox(ctk.CTkFrame):
         )
         outer.pack(fill="both", expand=True, padx=1, pady=1)
         outer.columnconfigure(0, weight=1)
+        outer.rowconfigure(1, weight=1)  # scroll frame row expands
+
+        # Search box at top of dropdown
+        self._search_var = ctk.StringVar()
+        self._search_var.trace_add("write", lambda *_: self._filter_dropdown())
+
+        search_entry = ctk.CTkEntry(
+            outer,
+            textvariable=self._search_var,
+            placeholder_text="Search models...",
+            height=26,
+            fg_color=("#F4F4F5", "#18181B"),
+            border_color=("#E4E4E7", "#27272A"),
+        )
+        search_entry.grid(row=0, column=0, sticky="ew", padx=4, pady=(4, 2))
+        search_entry.focus_set()
 
         # Scrollable frame with options
         scroll_frame = ctk.CTkScrollableFrame(
@@ -462,31 +478,48 @@ class ScrollableComboBox(ctk.CTkFrame):
             border_color=("#E4E4E7", "#27272A"),
             border_width=1,
         )
-        scroll_frame.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+        scroll_frame.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
         scroll_frame.columnconfigure(0, weight=1)
-        outer.rowconfigure(0, weight=1)
 
+        # Store scroll frame reference and build buttons
+        self._dropdown_scroll_frame = scroll_frame
+        self._dropdown_all_values = list(self._values)
         self._dropdown_buttons = []
-        for val in self._values:
-            b = ctk.CTkButton(
-                scroll_frame,
-                text=val,
-                anchor="w",
-                fg_color="transparent",
-                hover_color=("#E5E7EB", "#374151"),
-                text_color=("#18181B", "#F4F4F5"),
-                height=28,
-                command=lambda v=val: self._select(v),
-            )
-            b.pack(fill="x", padx=3, pady=1)
-            self._dropdown_buttons.append(b)
+        self._filter_dropdown()
 
-        # Position the dropdown
-        self._dropdown.geometry(f"{self.winfo_width()}x{self._dropdown_height}+{x}+{y}")
+        # Position the dropdown (slightly taller to accommodate search box)
+        self._dropdown.geometry(f"{self.winfo_width()}x{self._dropdown_height + 34}+{x}+{y}")
 
         # Click outside to close
         self._dropdown.bind("<FocusOut>", lambda e: self._dropdown.after(150, self._close_dropdown))
         self._dropdown.focus_set()
+
+    def _filter_dropdown(self):
+        """Filter the dropdown model buttons based on the search text."""
+        search = self._search_var.get().lower()
+
+        # Remove existing buttons
+        for b in self._dropdown_buttons:
+            b.destroy()
+        self._dropdown_buttons = []
+
+        # Re-add matching buttons
+        scroll_frame = self._dropdown_scroll_frame
+        for val in self._dropdown_all_values:
+            if search in val.lower():
+                b = ctk.CTkButton(
+                    scroll_frame,
+                    text=val,
+                    anchor="w",
+                    fg_color="transparent",
+                    hover_color=("#E5E7EB", "#374151"),
+                    text_color=("#18181B", "#F4F4F5"),
+                    height=28,
+                    command=lambda v=val: self._select(v),
+                )
+                b.pack(fill="x", padx=3, pady=1)
+                self._dropdown_buttons.append(b)
+
 
     def _select(self, value):
         self._variable.set(value)
@@ -2540,6 +2573,10 @@ class App:
 
 
         self.pc_status_var.set("Capturing tooltip and contacting AI...")
+        # Show a "thinking" indicator in the AI panel so the user knows
+        # the request is in flight (AI model calls can take several seconds).
+        self._show_ai_response("🤔 Thinking... looking into your request...")
+
 
 
 
