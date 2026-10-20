@@ -618,6 +618,9 @@ class App:
 
         self.tray = None
 
+        # Status message cycling during price check (to show user app is working)
+        self._status_cycle_after_id = None
+
         self._build_ui()
 
         self._start_hotkeys()
@@ -2609,6 +2612,8 @@ class App:
         # Show a "thinking" indicator in the AI panel so the user knows
         # the request is in flight (AI model calls can take several seconds).
         self._show_ai_response(random.choice(DIABLO_FLAVOR_MESSAGES))
+        # Start cycling the status message so the user knows work is in progress
+        self._start_status_cycle()
 
 
 
@@ -2623,7 +2628,34 @@ class App:
 
 
 
+
+
+    def _start_status_cycle(self):
+        """Begin cycling the status message through Diablo-flavored text
+        so the user knows a price check is in progress."""
+        self._stop_status_cycle()
+        self._cycle_status_message()
+
+    def _stop_status_cycle(self):
+        """Cancel any pending status-message cycle."""
+        if self._status_cycle_after_id is not None:
+            try:
+                self.root.after_cancel(self._status_cycle_after_id)
+            except Exception:
+                pass
+            self._status_cycle_after_id = None
+
+    def _cycle_status_message(self):
+        """Rotate to the next Diablo-flavored status message and reschedule
+        itself every 3 seconds while a price check is in flight."""
+        self._stop_status_cycle()
+        self.pc_status_var.set(random.choice(DIABLO_FLAVOR_MESSAGES))
+        self._status_cycle_after_id = self.root.after(3000, self._cycle_status_message)
+
     def _pc_on_result(self, success, message):
+
+        # Stop cycling the status message now that the request is done
+        self._stop_status_cycle()
 
         if self.pc_mode_var.get() == "api":
 
@@ -2736,14 +2768,14 @@ class App:
             self.ai_title_bar,
             text="AI Response",
             text_color=("#18181B", "#D9D9D9"),
-            font=("Segoe UI", 16, "bold"),
+            font=("Segoe UI", 18, "bold"),
         )
         self.ai_title_label.pack(side="top", padx=5, pady=2)
 
         # Response text area
         self.ai_response_text = ctk.CTkTextbox(
             parent,
-            font=("Consolas", 13),
+            font=("Consolas", 15),
             fg_color=("#F4F4F5", "#1a1a1a"),
             border_color=("#E4E4E7", "#27272A"),
             border_width=1,
