@@ -549,8 +549,13 @@ class PriceChecker:
         result = json.loads(body)
         try:
             text = result["candidates"][0]["content"]["parts"][0]["text"]
+            if not text or not text.strip():
+                _log_api("_call_gemini", body)
+                return False, "Empty response from API. Please try again."
+            _log_api("_call_gemini", body)
             return True, text
         except (KeyError, IndexError, TypeError):
+            _log_api("_call_gemini", body)
             return True, body  # return raw if we can't parse the expected shape
 
     def _call_openai(self, api_key, prompt, pil_img):
@@ -601,8 +606,13 @@ class PriceChecker:
         result = json.loads(body)
         try:
             text = result["choices"][0]["message"]["content"]
+            if not text or not text.strip():
+                _log_api("_call_openai", body)
+                return False, "Empty response from API. Please try again."
+            _log_api("_call_openai", body)
             return True, text
         except (KeyError, IndexError, TypeError):
+            _log_api("_call_openai", body)
             return True, body
 
     def _call_nvidia(self, api_key, prompt, pil_img):
@@ -656,8 +666,13 @@ class PriceChecker:
         result = json.loads(body)
         try:
             text = result["choices"][0]["message"]["content"]
+            if not text or not text.strip():
+                _log_api("_call_nvidia", body)
+                return False, "Empty response from API. Please try again."
+            _log_api("_call_nvidia", body)
             return True, text
         except (KeyError, IndexError, TypeError):
+            _log_api("_call_nvidia", body)
             return True, body
 
     def _call_custom(self, tool_key, url, api_key, prompt, pil_img):
@@ -722,11 +737,20 @@ class PriceChecker:
         try:
             # Try OpenAI-compatible response format first
             text = result["choices"][0]["message"]["content"]
+            if not text or not text.strip():
+                _log_api("_call_custom", body)
+                return False, "Empty response from API. Please try again."
+            _log_api("_call_custom", body)
             return True, text
         except (KeyError, IndexError, TypeError):
             # Fall back to Gemini-compatible format
             try:
                 text = result["candidates"][0]["content"]["parts"][0]["text"]
+                if not text or not text.strip():
+                    _log_api("_call_custom", body)
+                    return False, "Empty response from API. Please try again."
+                _log_api("_call_custom", body)
                 return True, text
             except (KeyError, IndexError, TypeError):
+                _log_api("_call_custom", body)
                 return True, body
