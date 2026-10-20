@@ -2,6 +2,8 @@
 
 import os
 
+import random
+
 import subprocess
 
 import sys
@@ -73,6 +75,37 @@ from pricecheck import (
 APP_TITLE = "D2TradeHelper"
 
 APP_VERSION = "0.2"
+
+# Subtle Diablo-flavored status messages shown while a price check is in flight.
+# One is chosen at random each time the user requests a price check.
+DIABLO_FLAVOR_MESSAGES = [
+    "Consulting the Horadric Cube...",
+    "Appraising item stats...",
+    "Reading the runes...",
+    "Checking the trade stash...",
+]
+
+# Map raw backend error messages to clean, actionable user-facing messages.
+_ERROR_MESSAGE_MAP = {
+    "Diablo II window not found": "Could not detect item stats. Ensure Diablo II is the active window.",
+    "No tooltip detected": "Failed to process tooltip. Make sure the item is hovered and try again.",
+    "API key is required": "API request timed out. Please check your connection or API key.",
+    "timed out": "API request timed out. Please check your connection or API key.",
+    "connection": "API request timed out. Please check your connection or API key.",
+    "model": "Model error: Invalid response format. Please try a different model.",
+    "Invalid response format": "Model error: Invalid response format. Please try a different model.",
+}
+
+
+def _clean_error_message(raw: str) -> str:
+    """Return a clean, actionable user-facing message for a raw error string."""
+    lower = raw.lower()
+    for key, friendly in _ERROR_MESSAGE_MAP.items():
+        if key.lower() in lower:
+            return friendly
+    # Fallback: keep it short and actionable
+    return f"Request failed. {raw[:120]}"
+
 
 
 
@@ -2572,10 +2605,10 @@ class App:
 
 
 
-        self.pc_status_var.set("Capturing tooltip and contacting AI...")
+        self.pc_status_var.set(random.choice(DIABLO_FLAVOR_MESSAGES))
         # Show a "thinking" indicator in the AI panel so the user knows
         # the request is in flight (AI model calls can take several seconds).
-        self._show_ai_response("🤔 Thinking... looking into your request...")
+        self._show_ai_response(random.choice(DIABLO_FLAVOR_MESSAGES))
 
 
 
@@ -2603,9 +2636,9 @@ class App:
             else:
 
 
-                self.pc_status_var.set("Price check failed.")
-
-                self._show_ai_response(f"Error: {message}")
+                clean = _clean_error_message(message)
+                self.pc_status_var.set(clean)
+                self._show_ai_response(f"Error: {clean}")
 
         else:
 
@@ -2615,7 +2648,7 @@ class App:
 
             else:
 
-                self.pc_status_var.set(f"Redirect failed: {message}")
+                self.pc_status_var.set(_clean_error_message(message))
 
 
 

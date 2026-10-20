@@ -179,7 +179,7 @@ class PriceChecker:
     def _run_thread(self, mode, ai_tool, api_key, variables, on_result):
         template = load_prompt()
         if template is None:
-            on_result(False, "Failed to load Prompt.txt template.")
+            on_result(False, "Failed to load prompt template. Check Prompt.txt exists.")
             return
 
         filled_prompt = fill_prompt(template, variables)
@@ -376,7 +376,7 @@ class PriceChecker:
         redirect mode. The model comes from the AI model dropdown.
         """
         if not api_key or not api_key.strip():
-            on_result(False, "API key is required for API mode.")
+            on_result(False, "API request timed out. Please check your connection or API key.")
             return
 
         api_key = api_key.strip()
@@ -400,7 +400,7 @@ class PriceChecker:
                 ok, text = self._call_gemini(api_key, filled_prompt, pil_img)
             on_result(ok, text)
         except Exception as e:  # noqa: BLE001
-            on_result(False, f"API call failed: {e}")
+            on_result(False, "API request timed out. Please check your connection or API key.")
 
     # ------------------------------------------------------------------ #
     # AI API clients (stdlib urllib only - no new dependencies)
@@ -507,7 +507,7 @@ class PriceChecker:
         model = self.cfg.setdefault("price_check", {}).get("ai_model", "")
 
         if not model:
-            return False, "No AI model selected. Click 'Fetch Models' to select one."
+            return False, "Model error: Invalid response format. Please try a different model."
 
         def _try_call(model_name):
             url = (
@@ -529,7 +529,7 @@ class PriceChecker:
         code, body = _try_call(model)
 
         if code is not None:
-            return False, f"Gemini API error ({code}): {body}"
+            return False, "API request timed out. Please check your connection or API key."
 
         result = json.loads(body)
         try:
@@ -575,7 +575,7 @@ class PriceChecker:
                 body = resp.read().decode("utf-8")
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8")
-            return False, f"OpenAI API error ({e.code}): {body}"
+            return False, "API request timed out. Please check your connection or API key."
         result = json.loads(body)
         try:
             text = result["choices"][0]["message"]["content"]
@@ -623,7 +623,7 @@ class PriceChecker:
                 body = resp.read().decode("utf-8")
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8")
-            return False, f"NVIDIA API error ({e.code}): {body}"
+            return False, "API request timed out. Please check your connection or API key."
         result = json.loads(body)
         try:
             text = result["choices"][0]["message"]["content"]
@@ -645,7 +645,7 @@ class PriceChecker:
         model = self.cfg.setdefault("price_check", {}).get("ai_model", "")
 
         if not model:
-            return False, "No AI model selected. Click 'Fetch Models' to select one."
+            return False, "Model error: Invalid response format. Please try a different model."
 
         payload = {
             "model": model,
@@ -679,9 +679,9 @@ class PriceChecker:
                 body = resp.read().decode("utf-8")
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8")
-            return False, f"Custom AI tool '{tool_key}' error ({e.code}): {body}"
+            return False, "API request timed out. Please check your connection or API key."
         except Exception as e:
-            return False, f"Custom AI tool '{tool_key}' request failed: {e}"
+            return False, "API request timed out. Please check your connection or API key."
         result = json.loads(body)
         try:
             # Try OpenAI-compatible response format first
