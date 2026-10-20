@@ -22,6 +22,16 @@ from PIL import Image
 
 from config import resource_path, load_config, save_config
 
+# Set to True to log raw API request/response bodies to stdout / error_log
+DEBUG_API = False
+
+def _log_api(label, body):
+    """Print a truncated API response body for debugging API connectivity."""
+    if not DEBUG_API:
+        return
+    preview = body[:500].replace("\\n", " ") if isinstance(body, str) else str(body)[:500]
+    print(f"[pricecheck] {label} response: {preview}...")
+
 PROMPT_FILE = "Prompt.txt"
 
 DEFAULT_AI_TOOLS = [
@@ -521,8 +531,10 @@ class PriceChecker:
             try:
                 with urllib.request.urlopen(req, timeout=60) as resp:
                     body = resp.read().decode("utf-8")
+                _log_api("_call_gemini", body)
             except urllib.error.HTTPError as e:
                 body = e.read().decode("utf-8")
+                _log_api("_call_gemini", body)
                 return e.code, body
             return None, body
 
@@ -573,8 +585,10 @@ class PriceChecker:
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 body = resp.read().decode("utf-8")
+                _log_api("_call_openai", body)
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8")
+            _log_api("_call_openai", body)
             return False, "API request timed out. Please check your connection or API key."
         result = json.loads(body)
         try:
@@ -621,8 +635,10 @@ class PriceChecker:
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 body = resp.read().decode("utf-8")
+                _log_api("_call_nvidia", body)
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8")
+            _log_api("_call_nvidia", body)
             return False, "API request timed out. Please check your connection or API key."
         result = json.loads(body)
         try:
@@ -677,8 +693,10 @@ class PriceChecker:
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 body = resp.read().decode("utf-8")
+                _log_api("_call_custom", body)
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8")
+            _log_api("_call_custom", body)
             return False, "API request timed out. Please check your connection or API key."
         except Exception as e:
             return False, "API request timed out. Please check your connection or API key."

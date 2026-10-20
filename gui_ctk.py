@@ -2647,9 +2647,14 @@ class App:
 
     def _cycle_status_message(self):
         """Rotate to the next Diablo-flavored status message and reschedule
-        itself every 3 seconds while a price check is in flight."""
+        itself every 3 seconds while a price check is in flight.
+        Never repeats the same message twice in a row so the change is visible."""
         self._stop_status_cycle()
-        self.pc_status_var.set(random.choice(DIABLO_FLAVOR_MESSAGES))
+        current = self.pc_status_var.get()
+        options = [m for m in DIABLO_FLAVOR_MESSAGES if m != current]
+        if not options:
+            options = DIABLO_FLAVOR_MESSAGES
+        self.pc_status_var.set(random.choice(options))
         self._status_cycle_after_id = self.root.after(3000, self._cycle_status_message)
 
     def _pc_on_result(self, success, message):
