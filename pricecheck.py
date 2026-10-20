@@ -23,7 +23,7 @@ from PIL import Image
 from config import resource_path, load_config, save_config
 
 # Set to True to log raw API request/response bodies to stdout / error_log
-DEBUG_API = False
+DEBUG_API = True
 
 def _log_api(label, body):
     """Print a truncated API response body for debugging API connectivity."""
