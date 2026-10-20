@@ -51,11 +51,11 @@ DEFAULT_CONFIG = {
     },
     "browser": "default",
     "trading_site": {
-        "site": "diablo2io",
+        "site": "diablotrade",
         "custom_sites": [],
         "sites": {
             "diablo2io": "https://diablo2.io/posting.php?f=16&mode=post",
-            "diablotrade": "https://d2r.diablo.trade/marketplace/create"
+            "diablotrade": "https://d2r.diablo.trade/"
         }
     },
     "scan": {

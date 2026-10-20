@@ -907,13 +907,43 @@ class App:
 
         self.pc_api_clear_btn.grid(row=0, column=4, padx=(6, 0))
 
+        # API base URL override (for Gemini, DeepSeek, and other OpenAI-compatible APIs)
+        # Placed INSIDE the API key frame so it appears directly under the API key entry
+        self.pc_api_base_url_frame = ctk.CTkFrame(
+            self.pc_api_key_frame, fg_color=("#F4F4F5", "#18181B"),
+            border_color=("#E4E4E7", "#27272A"), border_width=1
+        )
+        self.pc_api_base_url_frame.grid(row=4, column=0, columnspan=7, sticky="ew", padx=6, pady=(8, 0))
+        self.pc_api_base_url_frame.columnconfigure(1, weight=1)
+        ctk.CTkLabel(
+            self.pc_api_base_url_frame, text="API base URL:",
+            text_color=("#18181B", "#F4F4F5")
+        ).grid(row=0, column=0, sticky="w", padx=(0, 6))
+        self.pc_api_base_url_var = ctk.StringVar(
+            value=self.cfg.get("price_check", {}).get("api_base_url", "")
+        )
+        self.pc_api_base_url_entry = ctk.CTkEntry(
+            self.pc_api_base_url_frame,
+            textvariable=self.pc_api_base_url_var,
+            width=60,
+            fg_color=("#F4F4F5", "#18181B"),
+            border_color=("#E4E4E7", "#27272A"),
+        )
+        self.pc_api_base_url_entry.grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        ctk.CTkLabel(
+            self.pc_api_base_url_frame,
+            text="(e.g. https://generativelanguage.googleapis.com/v1 - for Gemini etc.)",
+            text_color=("#8A8A8A", "#8A8A8A"),
+            font=("Segoe UI", 11),
+        ).grid(row=0, column=2, sticky="w", padx=(6, 0))
+
         self.pc_model_var = ctk.StringVar(
 
             value=self.price_checker.get_config().get("ai_model", "gpt-4o"))
 
         self.pc_model_label = ctk.CTkLabel(self.pc_api_key_frame, text="Model:", text_color=("#18181B", "#F4F4F5"))
 
-        self.pc_model_label.grid(row=1, column=0, sticky="e", padx=(0, 6))
+        self.pc_model_label.grid(row=2, column=0, sticky="e", padx=(0, 6))
 
         self.pc_model_combo = ScrollableComboBox(
             self.pc_api_key_frame,
@@ -926,7 +956,7 @@ class App:
             dropdown_height=220,
         )
 
-        self.pc_model_combo.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(0, 6))
+        self.pc_model_combo.grid(row=2, column=1, columnspan=2, sticky="ew", padx=(0, 6))
 
         self.pc_model_var.trace_add("write", self._on_pc_model_changed)
 
@@ -936,7 +966,7 @@ class App:
             text_color=("#18181B", "#F4F4F5"),
             font=("Segoe UI", 12),
             wraplength=500,
-        ).grid(row=2, column=0, columnspan=7, sticky="w", padx=(0, 6), pady=(0, 6))
+        ).grid(row=1, column=0, columnspan=7, sticky="w", padx=(0, 6), pady=(0, 6))
 
         self.pc_api_key_frame.grid_remove()
 
@@ -988,6 +1018,10 @@ class App:
 
         # User-selectable layout mode: "side" (right drawer) or "bottom" (bottom drawer)
         self.ai_panel_mode = "side"
+
+        # Track panel mode/expanded state before undocking so we can restore it on re-dock
+        self.ai_panel_mode_before_undock = "side"
+        self.ai_panel_expanded_before_undock = False
 
         self.ai_bottom_height = 250
 
@@ -1405,7 +1439,7 @@ class App:
 
         self.site_frame.pack(pady=(10, 0), padx=10, fill="x")
 
-        ctk.CTkLabel(self.site_frame, text="Trading website:", font=("Segoe UI", 9, "bold"), text_color=("#18181B", "#F4F4F5")).pack(anchor="w", padx=5, pady=(4, 0))
+        ctk.CTkLabel(self.site_frame, text="Trading website:", font=("Segoe UI", 12, "bold"), text_color=("#18181B", "#F4F4F5")).pack(anchor="w", padx=5, pady=(4, 0))
 
         self.site_var = ctk.StringVar()
 
@@ -1998,7 +2032,13 @@ class App:
         if is_api:
 
             self.pc_api_key_frame.grid(
-                row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=(0, 3))
+                row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=(0, 3)
+            )
+            # Re-show the API base URL field (it was hidden when switching away from API mode)
+            if hasattr(self, "pc_api_base_url_frame"):
+                self.pc_api_base_url_frame.grid(
+                    row=3, column=0, columnspan=7, sticky="ew", padx=6, pady=(8, 0)
+                )
 
             # Create the AI drawer if it doesn't exist yet (API mode needs it)
             if not hasattr(self, "ai_panel") or self.ai_panel is None:
@@ -2013,10 +2053,12 @@ class App:
         else:
 
             self.pc_api_key_frame.grid_remove()
-
-            # Hide the AI drawer in redirect mode - results appear in the browser
+            # Hide the API base URL field too (only relevant in API mode)
+            if hasattr(self, "pc_api_base_url_frame"):
+                self.pc_api_base_url_frame.grid_remove()
+            # Fully hide the AI drawer in redirect mode - results appear in the browser
             if hasattr(self, "ai_panel") and self.ai_panel is not None:
-                self._hide_ai_panel()
+                self.ai_panel.withdraw()
 
         if hasattr(self, "pc_model_label"):
             self._on_pc_ai_tool_changed()
@@ -2101,9 +2143,21 @@ class App:
 
             #   anything else     -> Gemini (query param key)
 
+            #   api_base_url override (if set) -> use custom base URL
+
+            base_url = self.pc_api_base_url_var.get().strip()
+
             if api_key.startswith("sk-"):
 
-                url = "https://api.openai.com/v1/models"
+                if base_url:
+
+                    # Use user-specified base URL (e.g. Gemini)
+
+                    url = base_url.rstrip("/") + "/v1/models"
+
+                else:
+
+                    url = "https://api.openai.com/v1/models"
 
                 headers = {"Authorization": f"Bearer {api_key}"}
 
@@ -2555,6 +2609,8 @@ class App:
 
         pc_cfg["api_key"] = self.pc_api_key_var.get().strip().replace("\n", "").replace("\r", "")
 
+        pc_cfg["api_base_url"] = self.pc_api_base_url_var.get().strip()
+
         pc_cfg["platform"] = "PC"
 
         pc_cfg["ladder_status"] = self.pc_ladder_var.get()
@@ -2806,6 +2862,7 @@ class App:
             border_color=("#E4E4E7", "#27272A"),
             border_width=1,
             text_color=("#18181B", "#D9D9D9"),
+            wrap="word",
         )
         self.ai_response_text.pack(fill="both", expand=True, padx=5, pady=5)
 
@@ -2932,6 +2989,10 @@ class App:
         if not self.ai_panel:
             return
 
+        # Save current mode/state so we can restore it on re-dock
+        self.ai_panel_mode_before_undock = self.ai_panel_mode
+        self.ai_panel_expanded_before_undock = self.ai_panel_expanded
+
         # Re-enable standard window framing (title bar) so the window can be dragged freely
         self.ai_panel.overrideredirect(False)
 
@@ -2958,6 +3019,28 @@ class App:
 
         self.ai_locked = True
 
+        # Determine which mode to restore on re-dock:
+        # - If app is maximized → force bottom mode
+        # - If panel was in bottom mode before undocking → revert to side, collapsed
+        # - If panel was in side mode before undocking → restore previous side state
+        is_maximized = self.root.state() == "zoomed"
+
+        if is_maximized:
+            self.ai_panel_mode = "bottom"
+            self.ai_panel_expanded = True
+        elif self.ai_panel_mode_before_undock == "bottom":
+            # Was bottom before undock → revert to side drawer, collapsed (small)
+            self.ai_panel_mode = "side"
+            self.ai_panel_expanded = False
+        else:
+            # Was side before undock → restore previous side state
+            self.ai_panel_mode = "side"
+            self.ai_panel_expanded = self.ai_panel_expanded_before_undock
+
+        self.ai_mode_btn.configure(
+            text="⇄ Side" if self.ai_panel_mode == "bottom" else "⇄ Bottom"
+        )
+
         # Reset pack order for all title bar widgets to avoid packer state issues
         # after pack_forget cycles during undock/dock transitions
         self.ai_toggle_btn.pack_forget()
@@ -2974,9 +3057,10 @@ class App:
         self.ai_toggle_btn.configure(command=self._toggle_ai_panel, text="←")
         self.ai_undock_btn.configure(command=self._undock_ai_panel)
 
-        # Snap back to the side of the main app
-        self.ai_panel_expanded = False
-        self._show_ai_panel()
+        # Show panel with restored layout
+        self.ai_panel.deiconify()
+        self.ai_panel.lift()
+        self._apply_ai_panel_layout(expanded=self.ai_panel_expanded)
 
     def _show_ai_response(self, message):
         """Display the AI response in the panel and expand it."""

@@ -10,12 +10,9 @@ in the Price Check tab.
 import base64
 import io
 import json
-import socket
-import ssl
 import sys
 import threading
 import urllib.error
-import urllib.parse
 import urllib.request
 
 import cv2
@@ -56,164 +53,6 @@ PLATFORM_OPTIONS = ["PC", "PlayStation", "Xbox", "Switch"]
 LADDER_OPTIONS = ["Non-Ladder", "Ladder"]
 
 HARDCORE_OPTIONS = ["Softcore", "Hardcore"]
-
-# Chrome DevTools Protocol (CDP) - requires browser launched with
-# --remote-debugging-port=9222
-CDP_HOST = "localhost"
-CDP_PORT = 9222
-
-
-def fetch_open_browser_tabs():
-    """Query Chrome DevTools Protocol for all open browser tabs.
-
-    Makes an HTTP GET to http://localhost:9222/json and returns a list of
-    dicts with keys: id, title, url, webSocketDebuggerUrl.
-
-    Only standard web pages (type == "page") are returned; internal browser
-    URLs (chrome://, edge://, about:) are excluded.
-
-    Returns an empty list if the debugging port is unreachable.
-    """
-    tabs = []
-    try:
-        url = f"http://{CDP_HOST}:{CDP_PORT}/json"
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=3.0) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        for target in data:
-            if not isinstance(target, dict):
-                continue
-            if target.get("type") != "page":
-                continue
-            target_url = target.get("url", "") or ""
-            if target_url.lower().startswith(("chrome://", "edge://", "about:")):
-                continue
-            tabs.append(
-                {
-                    "id": target.get("id", ""),
-                    "title": target.get("title", "") or "(no title)",
-                    "url": target_url,
-                    "webSocketDebuggerUrl": target.get("webSocketDebuggerUrl", ""),
-                }
-            )
-    except Exception as e:
-        print(f"[pricecheck] CDP tab fetch failed: {e}")
-    return tabs
-
-
-def cdp_send_command(ws_url, method, params=None, timeout=5.0):
-    """Send a single CDP command over WebSocket and return the parsed result.
-
-    Minimal WebSocket client using socket/ssl (no extra dependencies).
-    Returns the "result" field of the CDP response, or None on failure.
-    """
-    import base64 as _b64
-    import hashlib as _hashlib
-    import os as _os
-    import struct as _struct
-
-    try:
-        parsed = urllib.parse.urlparse(ws_url)
-        scheme = parsed.scheme
-        host = parsed.hostname or CDP_HOST
-        port = parsed.port or (443 if scheme == "wss" else 80)
-        path = parsed.path or "/"
-        if parsed.query:
-            path += "?" + parsed.query
-
-        sock = socket.create_connection((host, port), timeout=timeout)
-        if scheme == "wss":
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            sock = ctx.wrap_socket(sock, server_hostname=host)
-
-        key = _b64.b64encode(
-            _hashlib.sha1((_os.urandom(16) + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()
-        ).decode()
-        handshake = (
-            f"GET {path} HTTP/1.1\r\n"
-            f"Host: {host}:{port}\r\n"
-            f"Upgrade: websocket\r\n"
-            f"Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {key}\r\n"
-            f"Sec-WebSocket-Version: 13\r\n\r\n"
-        )
-        sock.sendall(handshake.encode())
-
-        response = b""
-        while b"\r\n\r\n" not in response:
-            chunk = sock.recv(4096)
-            if not chunk:
-                break
-            response += chunk
-
-        def _send_frame(opcode, payload):
-            payload = payload if isinstance(payload, bytes) else payload.encode()
-            header = bytearray()
-            header.append(0x80 | opcode)
-            length = len(payload)
-            if length < 126:
-                header.append(0x80 | length)
-            elif length < 65536:
-                header.append(0x80 | 126)
-                header += _struct.pack(">H", length)
-            else:
-                header.append(0x80 | 127)
-                header += _struct.pack(">Q", length)
-            mask = _os.urandom(4)
-            header += mask
-            masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
-            sock.sendall(bytes(header) + masked)
-
-        def _recv_frame():
-            header = sock.recv(2)
-            if len(header) < 2:
-                return None, None
-            byte1, byte2 = header
-            opcode = byte1 & 0x0F
-            masked = bool(byte2 & 0x80)
-            length = byte2 & 0x7F
-            if length == 126:
-                length = _struct.unpack(">H", sock.recv(2))[0]
-            elif length == 127:
-                length = _struct.unpack(">Q", sock.recv(8))[0]
-            mask = sock.recv(4) if masked else b"\x00\x00\x00\x00"
-            payload = b""
-            while len(payload) < length:
-                chunk = sock.recv(min(4096, length - len(payload)))
-                if not chunk:
-                    break
-                payload += chunk
-            if masked:
-                payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
-            return opcode, payload
-
-        msg_id = 1
-        command = {"id": msg_id, "method": method, "params": params or {}}
-        _send_frame(1, json.dumps(command))
-
-        while True:
-            opcode, payload = _recv_frame()
-            if opcode is None:
-                break
-            if opcode == 1:
-                try:
-                    resp = json.loads(payload.decode("utf-8"))
-                except Exception:
-                    continue
-                if resp.get("id") == msg_id:
-                    sock.close()
-                    if "error" in resp:
-                        return None
-                    return resp.get("result")
-            elif opcode == 8:
-                break
-
-        sock.close()
-    except Exception as e:
-        print(f"[pricecheck] CDP command failed ({method}): {e}")
-    return None
 
 
 def load_prompt():
@@ -427,29 +266,8 @@ class PriceChecker:
         text_to_clipboard(filled_prompt)
 
         # Step 1: Try to focus an already-open AI tool tab (title match).
-        # This handles the case where the AI tool tab is already open and its
-        # window title contains the AI tool domain (e.g. "chatgpt", "gemini").
+        # This handles the case where the AI tool is the active browser tab.
         already_open = focus_browser_window(url)
-
-        if not already_open:
-            # Step 2: Title matching often fails because ChatGPT/Gemini tab
-            # titles show the chat name (e.g. "D2R Item Price Check") rather
-            # than the domain. Use Chrome DevTools Protocol to check if the
-            # AI tool URL is already open in any browser tab, and if so bring
-            # that tab to the front instead of opening a duplicate.
-            open_tabs = fetch_open_browser_tabs()
-            cdp_tab = None
-            for tab in open_tabs:
-                tab_url = (tab.get("url") or "").lower()
-                if url.lower() in tab_url or tab_url in url.lower():
-                    cdp_tab = tab
-                    break
-            if cdp_tab:
-                ws_url = cdp_tab.get("webSocketDebuggerUrl", "")
-                if ws_url:
-                    cdp_send_command(ws_url, "Page.bringToFront")
-                already_open = True
-                time.sleep(0.5)
 
         if already_open:
             # Give the window a moment to settle as foreground
@@ -583,8 +401,30 @@ class PriceChecker:
                 )
             # Detect provider from API key format, not redirect AI tool selection
             elif api_key.startswith("sk-"):
-                # OpenAI-compatible API (sk-proj-*, sk-*)
-                ok, text = self._call_openai(api_key, filled_prompt, pil_img)
+
+                # Check for custom base URL override (e.g. Gemini)
+
+                base_url = self.cfg.setdefault("price_check", {}).get("api_base_url", "").strip()
+
+                if base_url:
+
+                    # Use user-specified base URL (OpenAI-compatible)
+
+                    model = self.cfg.setdefault("price_check", {}).get("ai_model", "")
+
+                    ok, text = self._call_openai_compatible(
+
+                        api_key, base_url.rstrip("/") + "/v1/chat/completions",
+
+                        "_call_custom", model, filled_prompt, pil_img,
+
+                    )
+
+                else:
+
+                    # OpenAI-compatible API (sk-proj-*, sk-*)
+
+                    ok, text = self._call_openai(api_key, filled_prompt, pil_img)
             elif api_key.startswith("nvapi-"):
                 # NVIDIA NIM API (OpenAI-compatible, Bearer auth)
                 ok, text = self._call_nvidia(api_key, filled_prompt, pil_img)
