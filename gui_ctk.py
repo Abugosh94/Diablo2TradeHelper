@@ -2736,14 +2736,14 @@ class App:
             self.ai_title_bar,
             text="AI Response",
             text_color=("#18181B", "#D9D9D9"),
-            font=("Segoe UI", 14, "bold"),
+            font=("Segoe UI", 16, "bold"),
         )
         self.ai_title_label.pack(side="top", padx=5, pady=2)
 
         # Response text area
         self.ai_response_text = ctk.CTkTextbox(
             parent,
-            font=("Consolas", 11),
+            font=("Consolas", 13),
             fg_color=("#F4F4F5", "#1a1a1a"),
             border_color=("#E4E4E7", "#27272A"),
             border_width=1,
