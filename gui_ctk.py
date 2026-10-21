@@ -129,6 +129,23 @@ def _log_error(text):
 
 
 
+def _log_debug(text):
+
+    try:
+
+        import datetime
+
+        path = os.path.join(app_dir(), "debug_log.txt")
+
+        with open(path, "a", encoding="utf-8") as f:
+
+            f.write("\n[{datetime.datetime.now():%Y-%m-%d %H:%M:%S.%f}]\n{text}\n".format(datetime=datetime, text=text))
+
+    except Exception:
+
+        pass
+
+
 def format_hotkey(combo):
 
     """Capitalize hotkey parts for display: 'ctrl+alt+q' -> 'Ctrl+Alt+Q', 'f9' -> 'F9'."""
@@ -2785,32 +2802,40 @@ class App:
         """Begin cycling the status message through Diablo-flavored text
         so the user knows a price check is in progress."""
         self._stop_status_cycle()
+        self._log_debug(f"[STATUS CYCLE] START - after_id=None, first rotation in 3000ms")
         self._status_cycle_after_id = self.root.after(3000, self._cycle_status_message)
 
     def _stop_status_cycle(self):
         """Cancel any pending status-message cycle."""
         if self._status_cycle_after_id is not None:
+            self._log_debug(f"[STATUS CYCLE] STOP - cancelling after_id={self._status_cycle_after_id}")
             try:
                 self.root.after_cancel(self._status_cycle_after_id)
             except Exception:
                 pass
             self._status_cycle_after_id = None
+        else:
+            self._log_debug(f"[STATUS CYCLE] STOP - after_id already None, nothing to cancel")
 
     def _cycle_status_message(self):
         """Rotate to the next Diablo-flavored status message and reschedule
         itself every 3 seconds while a price check is in flight.
         Never repeats the same message twice in a row so the change is visible."""
+        self._log_debug(f"[STATUS CYCLE] ROTATE - current status='{self.pc_status_var.get()}'")
         self._stop_status_cycle()
         current = self.pc_status_var.get()
         options = [m for m in DIABLO_FLAVOR_MESSAGES if m != current]
         if not options:
             options = DIABLO_FLAVOR_MESSAGES
-        self.pc_status_var.set(random.choice(options))
+        new_msg = random.choice(options)
+        self.pc_status_var.set(new_msg)
+        self._log_debug(f"[STATUS CYCLE] ROTATED - new status='{new_msg}', rescheduling in 3000ms")
         self._status_cycle_after_id = self.root.after(3000, self._cycle_status_message)
 
     def _pc_on_result(self, success, message):
 
         # Stop cycling the status message now that the request is done
+        self._log_debug(f"[STATUS CYCLE] PC_RESULT - stopping cycle, success={success}, mode={self.pc_mode_var.get()}")
         self._stop_status_cycle()
 
         if self.pc_mode_var.get() == "api":
