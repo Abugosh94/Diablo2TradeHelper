@@ -1,1 +1,0 @@
-python -S D:\Addon test\main.py
