@@ -1113,16 +1113,16 @@ class App:
         self.exe_row = ctk.CTkFrame(self.launch_frame, fg_color="transparent")
         self.exe_row.pack(anchor="w", pady=(8, 0))
 
-        ctk.CTkLabel(exe_row, text="App exe path:", text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(0, 6))
+        ctk.CTkLabel(self.exe_row, text="App exe path:", text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(0, 6))
 
         self.pc_ai_exe_entry = ctk.CTkEntry(
-            exe_row, textvariable=self.pc_ai_exe_path_var, width=220,
+            self.exe_row, textvariable=self.pc_ai_exe_path_var, width=220,
             fg_color=("#F4F4F5", "#18181B"), border_color=("#E4E4E7", "#27272A"),
         )
         self.pc_ai_exe_entry.pack(side="left", padx=(0, 6))
 
         self.pc_ai_exe_browse_btn = ctk.CTkButton(
-            exe_row, text="Browse", width=70,
+            self.exe_row, text="Browse", width=70,
             command=self._browse_ai_exe,
             fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"),
             text_color=("#18181B", "#F4F4F5"),
