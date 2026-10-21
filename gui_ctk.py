@@ -1778,17 +1778,24 @@ class App:
 
     def _update_launch_radio_states(self):
         """Dim the unselected launch mode radio button (still clickable).
-        The exe path row is always visible so the user can enter/select a path
-        regardless of which mode is active."""
+        Highlight the exe path entry in red when exe mode is selected but no
+        path is set. The exe path row is always visible."""
         mode = self.pc_ai_launch_var.get()
         active_color = ("#18181B", "#F4F4F5")
         dim_color = ("#808080", "#505050")
         if mode == "browser":
             self.pc_ai_launch_browser_btn.configure(text_color=active_color)
             self.pc_ai_launch_exe_btn.configure(text_color=dim_color)
+            # Reset border color when not in exe mode
+            self.pc_ai_exe_entry.configure(border_color=("#E4E4E7", "#27272A"))
         else:
             self.pc_ai_launch_browser_btn.configure(text_color=dim_color)
             self.pc_ai_launch_exe_btn.configure(text_color=active_color)
+            exe_path = self.pc_ai_exe_path_var.get().strip()
+            if not exe_path or not os.path.exists(exe_path):
+                self.pc_ai_exe_entry.configure(border_color=("#FF4444", "#FF4444"))
+            else:
+                self.pc_ai_exe_entry.configure(border_color=("#E4E4E7", "#27272A"))
 
     def _browse_ai_exe(self):
         """Open a file dialog to select the AI tool desktop app exe."""
@@ -2702,6 +2709,21 @@ class App:
 
 
     def on_price_check(self):
+
+        # Validate: if redirect mode + desktop app selected but no valid exe path,
+        # show error and highlight the entry field in red
+        if self.pc_mode_var.get() == "redirect" and self.pc_ai_launch_var.get() == "exe":
+            exe_path = self.pc_ai_exe_path_var.get().strip()
+            if not exe_path or not os.path.exists(exe_path):
+                self.pc_ai_exe_entry.configure(border_color=("#FF4444", "#FF4444"))
+                messagebox.showerror(
+                    "No exe path set",
+                    "Desktop app mode is selected but no valid exe path has been set. "
+                    "Please enter or browse for the AI tool's executable path, "
+                    "or switch to Open in browser.",
+                    parent=self.root,
+                )
+                return
 
         pc_cfg = self.price_checker.get_config()
 

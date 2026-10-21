@@ -233,6 +233,20 @@ class PriceChecker:
         launch_mode, exe_path = self._get_ai_launch_config(ai_tool)
         use_exe = launch_mode == "exe" and bool(exe_path) and os.path.exists(exe_path)
 
+        # Validate: if user selected desktop app mode but no valid exe path,
+        # report an error instead of silently falling back to browser
+        if launch_mode == "exe" and not use_exe:
+            if not exe_path or not exe_path.strip():
+                on_result(False,
+                    "Desktop app mode is selected but no exe path has been set. "
+                    "Please enter or browse for the AI tool's executable path, "
+                    "or switch to Open in browser.")
+                return
+            on_result(False,
+                f"Desktop app mode is selected but the exe was not found at:\n{exe_path}\n"
+                "Please verify the path or switch to Open in browser.")
+            return
+
         user32 = ctypes.windll.user32
         VK_CONTROL, VK_V = 0x11, 0x56
         VK_RETURN = 0x0D
