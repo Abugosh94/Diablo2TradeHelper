@@ -1988,13 +1988,13 @@ class App:
 
             "D2TradeHelper - Close behavior",
 
-            "When you close the window, what would you like to do?\\n\\n"
+            "When you close the window, what would you like to do?\n\n"
 
-            "  Yes  \\u2192 Minimize to system tray (app keeps running in background)\\n"
+            "  Yes → Minimize to system tray (app keeps running in background)\n"
 
-            "  No   \\u2192 Exit the app completely\\n"
+            "  No   → Exit the app completely\n"
 
-            "  Cancel \\u2192 Keep the window open",
+            "  Cancel → Keep the window open",
 
             icon="question", parent=self.root,
 
@@ -4100,13 +4100,13 @@ class App:
 
             "D2TradeHelper - Close behavior",
 
-            "When you close the window, what would you like to do?\\n\\n"
+            "When you close the window, what would you like to do?\n\n"
 
-            "  Yes  \\u2192 Minimize to system tray (app keeps running in background)\\n"
+            "  Yes → Minimize to system tray (app keeps running in background)\n"
 
-            "  No   \\u2192 Exit the app completely\\n"
+            "  No   → Exit the app completely\n"
 
-            "  Cancel \\u2192 Keep the window open",
+            "  Cancel → Keep the window open",
 
             icon="question", parent=self.root,
 
