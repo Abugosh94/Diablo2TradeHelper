@@ -3097,6 +3097,10 @@ class App:
 
         self.ai_panel_expanded = True
 
+        # Re-apply layout so the panel snaps to side mode when coming from bottom
+        if self.ai_panel and self.ai_panel.winfo_exists():
+            self._apply_ai_panel_layout(expanded=True)
+
         # Make sure it is visible
         self.ai_panel.deiconify()
         self.ai_panel.lift()
