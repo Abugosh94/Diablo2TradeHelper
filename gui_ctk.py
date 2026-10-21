@@ -3189,7 +3189,13 @@ class App:
             self.ai_panel.withdraw()
 
     def _on_root_map(self, event):
-        """Show the AI panel again when the main app window is restored."""
+        """Show the AI panel again when the main app window is restored.
+
+        Only in API mode - redirect mode keeps the panel hidden since
+        results appear in the browser.
+        """
+        if self.pc_mode_var.get() != "api":
+            return
         if self.ai_panel and self.ai_panel.winfo_exists():
             if self.ai_panel_expanded:
                 self._show_ai_panel()
