@@ -1778,18 +1778,17 @@ class App:
 
     def _update_launch_radio_states(self):
         """Dim the unselected launch mode radio button (still clickable).
-        Hide the exe path row when browser mode is selected."""
+        The exe path row is always visible so the user can enter/select a path
+        regardless of which mode is active."""
         mode = self.pc_ai_launch_var.get()
         active_color = ("#18181B", "#F4F4F5")
         dim_color = ("#808080", "#505050")
         if mode == "browser":
             self.pc_ai_launch_browser_btn.configure(text_color=active_color)
             self.pc_ai_launch_exe_btn.configure(text_color=dim_color)
-            self.exe_row.pack_forget()
         else:
             self.pc_ai_launch_browser_btn.configure(text_color=dim_color)
             self.pc_ai_launch_exe_btn.configure(text_color=active_color)
-            self.exe_row.pack(anchor="w", pady=(8, 0))
 
     def _browse_ai_exe(self):
         """Open a file dialog to select the AI tool desktop app exe."""
