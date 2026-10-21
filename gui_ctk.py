@@ -4,8 +4,6 @@ import os
 
 import random
 
-import subprocess
-
 import sys
 
 import threading
@@ -45,8 +43,7 @@ except Exception:
 
 
 from config import (load_config, save_config, app_dir, get_trading_url,
-
-                    TRADING_SITE_LABELS)
+                    resource_path, TRADING_SITE_LABELS)
 
 from hotkeys import HotkeyManager, copy_image_to_clipboard, focus_browser_window
 
@@ -107,26 +104,6 @@ def _clean_error_message(raw: str) -> str:
     # Fallback: keep it short and actionable
     return f"Request failed. {raw[:120]}"
 
-
-
-
-
-
-def resource_path(relative_path):
-
-    if getattr(sys, "frozen", False):
-
-        base = getattr(sys, "_MEIPASS", None)
-
-        if base and os.path.exists(os.path.join(base, relative_path)):
-
-            return os.path.join(base, relative_path)
-
-        return os.path.join(os.path.dirname(sys.executable), relative_path)
-
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
-
-                        relative_path)
 
 
 
@@ -976,7 +953,7 @@ class App:
 
             self.pc_mode_frame,
 
-            text="Redirect to AI tool (open in browser)", text_color=("#18181B", "#F4F4F5"),
+            text="Redirect to AI tool", text_color=("#18181B", "#F4F4F5"),
 
             variable=self.pc_mode_var,
 
@@ -995,8 +972,13 @@ class App:
         self.pc_custom_ai_url_var = ctk.StringVar()
 
         self.pc_custom_ai_keybind_var = ctk.StringVar(value="ctrl+shift+o")
+        self.pc_custom_ai_exe_var = ctk.StringVar(value="")
 
         self.pc_keybind_var = ctk.StringVar()
+
+        # ---- AI launch mode: browser vs desktop app (exe) ----
+        self.pc_ai_launch_var = ctk.StringVar(value="browser")
+        self.pc_ai_exe_path_var = ctk.StringVar(value="")
 
         self.pc_status_var = ctk.StringVar(
 
@@ -1107,6 +1089,40 @@ class App:
 
         )
 
+        # ---- AI launch mode: browser vs desktop app (exe) ----
+        launch_frame = ctk.CTkFrame(self.pc_mode_frame, fg_color="transparent")
+        launch_frame.grid(row=4, column=0, columnspan=3, sticky="w", padx=6, pady=(8, 2))
+
+        ctk.CTkRadioButton(
+            launch_frame,
+            text="Open in browser", text_color=("#18181B", "#F4F4F5"),
+            variable=self.pc_ai_launch_var, value="browser",
+            command=self._on_pc_ai_launch_changed,
+        ).pack(side="left", padx=(0, 15))
+
+        ctk.CTkRadioButton(
+            launch_frame,
+            text="Open desktop app (recommended)", text_color=("#18181B", "#F4F4F5"),
+            variable=self.pc_ai_launch_var, value="exe",
+            command=self._on_pc_ai_launch_changed,
+        ).pack(side="left", padx=(0, 15))
+
+        ctk.CTkLabel(launch_frame, text="App exe path:", text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(15, 6))
+
+        self.pc_ai_exe_entry = ctk.CTkEntry(
+            launch_frame, textvariable=self.pc_ai_exe_path_var, width=220,
+            fg_color=("#F4F4F5", "#18181B"), border_color=("#E4E4E7", "#27272A"),
+        )
+        self.pc_ai_exe_entry.pack(side="left", padx=(0, 6))
+
+        self.pc_ai_exe_browse_btn = ctk.CTkButton(
+            launch_frame, text="Browse", width=70,
+            command=self._browse_ai_exe,
+            fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"),
+            text_color=("#18181B", "#F4F4F5"),
+        )
+        self.pc_ai_exe_browse_btn.pack(side="left")
+
 
 
         # New chat behavior
@@ -1127,7 +1143,7 @@ class App:
 
         ctk.CTkLabel(self.pc_mode_frame, text="New chat behavior:", text_color=("#18181B", "#F4F4F5")).grid(
 
-            row=4, column=0, sticky="e", padx=6, pady=3
+            row=5, column=0, sticky="e", padx=6, pady=3
 
         )
 
@@ -1146,7 +1162,7 @@ class App:
 
         self.pc_new_chat_combo.grid(
 
-            row=4, column=1, columnspan=2, sticky="ew", padx=6, pady=3
+            row=5, column=1, columnspan=2, sticky="ew", padx=6, pady=3
 
         )
 
@@ -1473,7 +1489,8 @@ class App:
 
         self.site_combo = ctk.CTkComboBox(self.site_frame,
 
-            variable=self.site_var, values=site_labels, width=300, fg_color=("#F4F4F5", "#18181B"), border_color=("#E4E4E7", "#27272A"), button_color=("#3B82F6", "#3B82F6"))
+            variable=self.site_var, values=site_labels, width=300, fg_color=("#F4F4F5", "#18181B"), border_color=("#E4E4E7", "#27272A"), button_color=("#3B82F6", "#3B82F6"),
+            command=self.on_site_selected)
 
         self.site_combo.pack(anchor="w", padx=5, pady=2)
 
@@ -1506,8 +1523,6 @@ class App:
 
 
         self._refresh_site_combo()
-
-        self.site_combo.bind("<<ComboboxSelected>>", self.on_site_selected)
 
         self.open_site_btn = ctk.CTkButton(self.site_frame, text="Open site",
 
@@ -1740,6 +1755,31 @@ class App:
         self.cfg.setdefault("price_check", {})["ai_model"] = self.pc_model_var.get()
 
         save_config(self.cfg)
+
+    def _on_pc_ai_launch_changed(self):
+        """Save launch mode + exe path for the currently selected AI tool."""
+        selected = self.pc_ai_tool_var.get()
+        selected_key = self._pc_ai_key_by_label.get(selected)
+        if not selected_key:
+            return
+        self.price_checker._save_ai_launch_config(
+            selected_key,
+            self.pc_ai_launch_var.get(),
+            self.pc_ai_exe_path_var.get(),
+        )
+        save_config(self.cfg)
+
+    def _browse_ai_exe(self):
+        """Open a file dialog to select the AI tool desktop app exe."""
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            title="Select AI tool executable",
+            filetypes=[("Executables", "*.exe"), ("All files", "*.*")],
+        )
+        if path:
+            self.pc_ai_exe_path_var.set(path)
+            self._on_pc_ai_launch_changed()
+
 
 
 
@@ -2401,6 +2441,19 @@ class App:
 
     def _on_pc_ai_tool_changed(self):
 
+        # Save the current tool's launch config before switching
+        current_key = None
+        for label, key in self._pc_ai_key_by_label.items():
+            if key == self.pc_ai_tool_var.get():
+                current_key = key
+                break
+        if current_key and current_key != "custom:new":
+            self.price_checker._save_ai_launch_config(
+                current_key,
+                self.pc_ai_launch_var.get(),
+                self.pc_ai_exe_path_var.get(),
+            )
+
         selected = self.pc_ai_tool_var.get()
 
         if selected == "Add custom AI tool...":
@@ -2481,7 +2534,7 @@ class App:
 
         y = self.root.winfo_rooty() + 50
 
-        dialog.geometry(f"450x460+{x}+{y}")
+        dialog.geometry(f"450x520+{x}+{y}")
 
         # Clear any stale values from previous use
 
@@ -2490,6 +2543,7 @@ class App:
         self.pc_custom_ai_url_var.set("")
 
         self.pc_custom_ai_keybind_var.set("ctrl+shift+o")
+        self.pc_custom_ai_exe_var.set("")
 
 
 
@@ -2521,11 +2575,20 @@ class App:
 
         key_entry.grid(row=2, column=1, sticky="ew", pady=10, padx=(0, 0))
 
-        ctk.CTkLabel(frame, text="Example: My Gemini - https://gemini.google.com - ctrl+shift+o", text_color=("#18181B", "#F4F4F5"), font=("Segoe UI", 13), wraplength=380).grid(row=3, column=0, columnspan=2, sticky="ew", padx=(0, 0), pady=(0, 14))
+
+        ctk.CTkLabel(frame, text="Desktop app exe (optional):", text_color=("#18181B", "#F4F4F5"), font=dialog_label_font).grid(row=3, column=0, sticky="w", padx=(0, 12), pady=10)
+        exe_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        exe_frame.grid(row=3, column=1, sticky="ew", pady=10, padx=(0, 0))
+        exe_frame.columnconfigure(0, weight=1)
+        exe_entry = ctk.CTkEntry(exe_frame, textvariable=self.pc_custom_ai_exe_var, width=200, fg_color=("#F4F4F5", "#18181B"), border_color=("#E4E4E7", "#27272A"), font=entry_font, height=32)
+        exe_entry.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        exe_browse_btn = ctk.CTkButton(exe_frame, text="Browse", width=70, command=self._browse_ai_exe, fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"), text_color=("#18181B", "#F4F4F5"))
+        exe_browse_btn.grid(row=0, column=1)
+        ctk.CTkLabel(frame, text="Example: My Gemini - https://gemini.google.com - ctrl+shift+o", text_color=("#18181B", "#F4F4F5"), font=("Segoe UI", 13), wraplength=380).grid(row=4, column=0, columnspan=2, sticky="ew", padx=(0, 0), pady=(0, 14))
 
         btn_frame = ctk.CTkFrame(frame, fg_color=("#F4F4F5", "#18181B"), border_color=("#E4E4E7", "#27272A"), border_width=1)
 
-        btn_frame.grid(row=4, column=0, columnspan=2, pady=10)
+        btn_frame.grid(row=5, column=0, columnspan=2, pady=10)
 
 
 
@@ -2555,7 +2618,7 @@ class App:
 
             try:
 
-                key = self.price_checker.save_custom_ai_tool(name, url, new_chat_keybind)
+                key = self.price_checker.save_custom_ai_tool(name, url, new_chat_keybind, self.pc_custom_ai_exe_var.get())
 
                 save_config(self.cfg)
 

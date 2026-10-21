@@ -10,6 +10,7 @@ in the Price Check tab.
 import base64
 import io
 import json
+import os
 import sys
 import threading
 import urllib.error
@@ -228,6 +229,10 @@ class PriceChecker:
         import ctypes
         import time
 
+        # Determine whether to launch a desktop app or open the browser
+        launch_mode, exe_path = self._get_ai_launch_config(ai_tool)
+        use_exe = launch_mode == "exe" and bool(exe_path) and os.path.exists(exe_path)
+
         user32 = ctypes.windll.user32
         VK_CONTROL, VK_V = 0x11, 0x56
         VK_RETURN = 0x0D
@@ -265,24 +270,58 @@ class PriceChecker:
         # Always copy the prompt to clipboard first
         text_to_clipboard(filled_prompt)
 
-        # Step 1: Try to focus an already-open AI tool tab (title match).
-        # This handles the case where the AI tool is the active browser tab.
-        already_open = focus_browser_window(url)
+        # Step 1: Try to focus / launch the AI tool
+        already_open = False
+        if use_exe:
+            # First try to focus an already-running instance of the app.
+            # This keeps it on whatever screen it is already on - we never
+            # launch a new window if one is already open.
+            already_open = focus_browser_window(ai_tool)
+
+            if not already_open:
+                # App not running - launch it (it will open on its default screen)
+                try:
+                    os.startfile(exe_path)
+                except Exception:
+                    pass
+                # Wait for the app window to appear (desktop apps load at
+                # different speeds, so poll instead of using a fixed sleep).
+                t0 = time.time()
+                wait_for_exe = 10.0  # total seconds to wait for the app window
+                while time.time() - t0 < wait_for_exe:
+                    if focus_browser_window(ai_tool):
+                        already_open = True
+                        break
+                    time.sleep(0.5)
+                if not already_open:
+                    print(f"[pricecheck] Timed out waiting for {ai_tool} window; "
+                          f"proceeding anyway.")
+        else:
+            # Try to focus an already-open AI tool tab (title match).
+            # This handles the case where the AI tool is the active browser tab.
+            already_open = focus_browser_window(url)
 
         if already_open:
-            # Give the window a moment to settle as foreground
-            time.sleep(0.3)
+            # Give the window a moment to settle as foreground.
+            # Desktop apps settle faster than browsers.
+            settle = 0.2 if use_exe else 0.3
+            time.sleep(settle)
             if new_chat_each_time and new_chat_kb:
-                # Wait for the AI tool page to finish loading before starting
-                # a new chat, so Ctrl+Shift+O lands on a ready input box.
-                self._wait_for_page_ready()
-                # Start a new chat in the existing tab
+                # Wait for the AI tool page / app to finish loading before
+                # starting a new chat, so Ctrl+Shift+O lands on a ready input box.
+                # Desktop apps don't have browser pages to load, so skip this
+                # when using an exe.
+                if not use_exe:
+                    self._wait_for_page_ready()
+                # Start a new chat in the existing tab/window
                 _press_combo(*new_chat_kb)
-                # Give the new chat UI a moment to appear
-                time.sleep(2.0)
+                # Give the new chat UI a moment to appear.
+                # Desktop apps are faster than browsers.
+                post_kb = 1.0 if use_exe else 2.0
+                time.sleep(post_kb)
             # If new_chat_each_time is False, we paste into the current chat
         else:
-            # No existing AI tool tab found - open a new tab
+            # No existing AI tool window found - open a new browser tab
             webbrowser.open(url)
             # Give the browser a moment to open the new tab, then focus it
             time.sleep(2.0)
@@ -309,8 +348,11 @@ class PriceChecker:
         time.sleep(0.5)
         _paste_clipboard()
 
-        # Wait for the image to finish uploading before submitting
-        time.sleep(3.0)
+        # Wait for the image to finish uploading before submitting.
+        # Applies to both browser and desktop app modes - upload speed
+        # varies between users and tools, so we poll rather than using a
+        # fixed sleep.
+        self.wait_for_upload_complete()
         _submit()
 
         preview = filled_prompt.strip()
@@ -376,6 +418,51 @@ class PriceChecker:
             else:
                 last_title, stable_since = title, None
             time.sleep(0.1)
+        return False
+
+    def wait_for_upload_complete(self, max_wait=5.0):
+        """Wait until the AI tool appears to have finished processing the
+        pasted screenshot (upload), then return.
+
+        Since we drive the app via clipboard + keyboard simulation, we can't
+        query the browser/app's internal upload state directly.  Instead we
+        poll the foreground window title: once it stays stable for a short
+        period the app has typically settled after the upload.  Falls back to
+        a shorter fixed sleep if the title never stabilizes, so slow uploads
+        don't break the flow.
+
+        Returns True when the title stabilized, False on timeout (we proceed
+        anyway in that case).
+        """
+        import ctypes
+        import time
+
+        user32 = ctypes.windll.user32
+
+        def fg_title():
+            hwnd = user32.GetForegroundWindow()
+            if not hwnd:
+                return ""
+            buf = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(hwnd, buf, 512)
+            return buf.value.strip()
+
+        t0 = time.time()
+        last_title, stable_since = None, None
+        while time.time() - t0 < max_wait:
+            title = fg_title()
+            if title and title == last_title:
+                if stable_since is None:
+                    stable_since = time.time()
+                if time.time() - stable_since >= 0.4:
+                    return True
+            else:
+                last_title, stable_since = title, None
+            time.sleep(0.1)
+
+        # Title never stabilized - give the app a brief grace period and
+        # proceed anyway rather than stalling indefinitely.
+        time.sleep(0.5)
         return False
 
     def _run_api(self, ai_tool, api_key, filled_prompt, pil_img, on_result):
@@ -472,6 +559,41 @@ class PriceChecker:
                 return c.get("new_chat_keybind", "ctrl+shift+o")
         return None
 
+    def _get_ai_launch_config(self, ai_tool):
+        """Return (launch_mode, exe_path) for the given AI tool key.
+
+        launch_mode is 'browser' or 'exe'.  Built-in tools (gemini/chatgpt)
+        store their launch config under price_check.ai_tool_launch /
+        price_check.ai_tool_exe_path dicts; custom tools store it inline
+        in their custom_ai_tools entry.
+        """
+        pc = self.cfg.setdefault("price_check", {})
+        launch_map = pc.setdefault("ai_tool_launch", {})
+        exe_map = pc.setdefault("ai_tool_exe_path", {})
+
+        if ai_tool and ai_tool.startswith("custom:"):
+            for c in pc.get("custom_ai_tools", []):
+                if "custom:" + (c.get("name", "").strip().lower()) == ai_tool:
+                    return c.get("launch_mode", "browser"), c.get("exe_path", "")
+        return launch_map.get(ai_tool, "browser"), exe_map.get(ai_tool, "")
+
+    def _save_ai_launch_config(self, ai_tool, launch_mode, exe_path):
+        """Persist launch mode + exe path for the given AI tool key."""
+        pc = self.cfg.setdefault("price_check", {})
+        launch_map = pc.setdefault("ai_tool_launch", {})
+        exe_map = pc.setdefault("ai_tool_exe_path", {})
+
+        if ai_tool and ai_tool.startswith("custom:"):
+            for c in pc.get("custom_ai_tools", []):
+                if "custom:" + (c.get("name", "").strip().lower()) == ai_tool:
+                    c["launch_mode"] = launch_mode
+                    c["exe_path"] = exe_path
+                    self.save()
+                    return
+        launch_map[ai_tool] = launch_mode
+        exe_map[ai_tool] = exe_path
+        self.save()
+
     @staticmethod
     def _parse_keybind(keybind_str):
         """Parse a keybind string like 'ctrl+shift+o' into a tuple of
@@ -497,11 +619,12 @@ class PriceChecker:
                 return None
         return tuple(keys)
 
-    def save_custom_ai_tool(self, name, url, new_chat_keybind="ctrl+shift+o"):
+    def save_custom_ai_tool(self, name, url, new_chat_keybind="ctrl+shift+o", exe_path=""):
         """Save or update a custom AI tool. Returns its key."""
         name = (name or "").strip()
         url = (url or "").strip()
         new_chat_keybind = (new_chat_keybind or "ctrl+shift+o").strip()
+        exe_path = (exe_path or "").strip()
         if not name:
             raise ValueError("Give the AI tool a name.")
         if not url:
@@ -512,10 +635,10 @@ class PriceChecker:
         customs = pc.setdefault("custom_ai_tools", [])
         for c in customs:
             if (c.get("name", "").strip().lower() == name.lower()):
-                c["name"], c["url"], c["new_chat_keybind"] = name, url, new_chat_keybind
+                c["name"], c["url"], c["new_chat_keybind"], c["exe_path"] = name, url, new_chat_keybind, exe_path
                 self.save()
                 return "custom:" + name.lower()
-        customs.append({"name": name, "url": url, "new_chat_keybind": new_chat_keybind})
+        customs.append({"name": name, "url": url, "new_chat_keybind": new_chat_keybind, "exe_path": exe_path})
         self.save()
         return "custom:" + name.lower()
 

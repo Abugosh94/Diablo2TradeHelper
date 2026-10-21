@@ -55,7 +55,7 @@ DEFAULT_CONFIG = {
         "custom_sites": [],
         "sites": {
             "diablo2io": "https://diablo2.io/posting.php?f=16&mode=post",
-            "diablotrade": "https://d2r.diablo.trade/"
+            "diablotrade": "https://d2r.diablo.trade/marketplace/create"
         }
     },
     "scan": {
@@ -87,7 +87,6 @@ DEFAULT_CONFIG = {
     },
     "theme": "system",  # 'system' | 'light' | 'dark' - defaults to system default
 }
-TRADING_SITE = DEFAULT_CONFIG["trading_site"]
 
 
 def load_config():
