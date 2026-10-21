@@ -3085,9 +3085,17 @@ class App:
         if self.ai_panel_mode == "bottom":
             self.ai_panel_mode = "side"
 
-        # Re-enable standard window framing (title bar) so the window can be dragged freely
-        self.ai_panel.overrideredirect(False)
+        self.ai_panel_expanded = True
 
+        # Apply side layout while still locked — _compute_ai_panel_geometry
+        # returns None when ai_locked is False, so we must set geometry before
+        # unlocking.
+        if self.ai_panel and self.ai_panel.winfo_exists():
+            self._apply_ai_panel_layout(expanded=True)
+
+        # Now unlock: re-enable standard window framing (title bar) so the
+        # window can be dragged freely.
+        self.ai_panel.overrideredirect(False)
         self.ai_locked = False
 
         # Update buttons: toggle becomes Dock, hide Undock and Mode buttons
@@ -3095,11 +3103,9 @@ class App:
         self.ai_undock_btn.pack_forget()
         self.ai_mode_btn.pack_forget()
 
-        self.ai_panel_expanded = True
-
-        # Re-apply layout so the panel snaps to side mode when coming from bottom
-        if self.ai_panel and self.ai_panel.winfo_exists():
-            self._apply_ai_panel_layout(expanded=True)
+        # Make sure it is visible
+        self.ai_panel.deiconify()
+        self.ai_panel.lift()
 
         # Make sure it is visible
         self.ai_panel.deiconify()
