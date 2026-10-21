@@ -2785,7 +2785,9 @@ class App:
         """Begin cycling the status message through Diablo-flavored text
         so the user knows a price check is in progress."""
         self._stop_status_cycle()
-        self._status_cycle_after_id = self.root.after(3000, self._cycle_status_message)
+        # Fire the first rotation after 1 second so users see activity
+        # even if the API responds quickly. Subsequent cycles stay at 3s.
+        self._status_cycle_after_id = self.root.after(1000, self._cycle_status_message)
 
     def _stop_status_cycle(self):
         """Cancel any pending status-message cycle."""
