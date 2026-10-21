@@ -1447,14 +1447,7 @@ class App:
             justify="center",
         ).grid(row=1, column=0, sticky="ew", padx=6, pady=(0, 3))
 
-        self.pc_status_label = ctk.CTkLabel(
-            self.pc_bind_label_frame,
-            textvariable=self.pc_status_var,
-            text_color=("#18181B", "#F4F4F5"),
-            font=("Segoe UI", 11, "italic"),
-            justify="center",
-        )
-        self.pc_status_label.grid(row=2, column=0, sticky="ew", padx=6, pady=(0, 3))
+
 
 
 
@@ -2872,18 +2865,23 @@ class App:
             options = DIABLO_FLAVOR_MESSAGES
         new_msg = random.choice(options)
         self.pc_status_var.set(new_msg)
+        self.pc_status_dot_count = 0  # Reset dots when word cycles
+        # Also update the AI results panel so the cycling message is visible there
+        if hasattr(self, "ai_response_text") and self.ai_response_text:
+            self.ai_response_text.delete("0.0", "end")
+            self.ai_response_text.insert("0.0", new_msg)
         _log_debug(f"[STATUS CYCLE] ROTATED - new status='{new_msg}', rescheduling in 3000ms")
         self._status_cycle_after_id = self.root.after(3000, self._cycle_status_message)
         self._animate_status_dots()
 
     def _animate_status_dots(self):
-        """Cycle the trailing dots on the status message (., .., ..., ....)."""
-        dots = ["", ".", "..", "...", "...."]
+        """Cycle the trailing dots on the status message (., .., ...)."""
+        dots = ["", ".", "..", "..."]
         self.pc_status_dot_count = (self.pc_status_dot_count + 1) % len(dots)
         current = self.pc_status_var.get()
         base = current.rstrip(".")
         self.pc_status_var.set(f"{base}{dots[self.pc_status_dot_count]}")
-        self._status_dot_after_id = self.root.after(500, self._animate_status_dots)
+        self._status_dot_after_id = self.root.after(333, self._animate_status_dots)
 
     def _stop_status_dots(self):
         """Cancel any pending dot animation."""
