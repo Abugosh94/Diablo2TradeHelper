@@ -2837,8 +2837,8 @@ class App:
         self._stop_status_cycle()
         self._stop_status_dots()
         self.pc_status_dot_count = 0
-        _log_debug(f"[STATUS CYCLE] START - after_id=None, first rotation in 3000ms")
-        self._status_cycle_after_id = self.root.after(3000, self._cycle_status_message)
+        _log_debug(f"[STATUS CYCLE] START - after_id=None, first rotation in 5000ms")
+        self._status_cycle_after_id = self.root.after(5000, self._cycle_status_message)
         self._animate_status_dots()
 
     def _stop_status_cycle(self):
@@ -2856,7 +2856,7 @@ class App:
 
     def _cycle_status_message(self):
         """Rotate to the next Diablo-flavored status message and reschedule
-        itself every 3 seconds while a price check is in flight.
+        itself every 5 seconds while a price check is in flight.
         Never repeats the same message twice in a row so the change is visible."""
         _log_debug(f"[STATUS CYCLE] ROTATE - current status='{self.pc_status_var.get()}'")
         self._stop_status_cycle()
@@ -2878,8 +2878,8 @@ class App:
         self.pc_status_recent_msgs.append(new_msg)
         if len(self.pc_status_recent_msgs) > 10:
             self.pc_status_recent_msgs.pop(0)
-        _log_debug(f"[STATUS CYCLE] ROTATED - new status='{new_msg}', rescheduling in 3000ms")
-        self._status_cycle_after_id = self.root.after(3000, self._cycle_status_message)
+        _log_debug(f"[STATUS CYCLE] ROTATED - new status='{new_msg}', rescheduling in 5000ms")
+        self._status_cycle_after_id = self.root.after(5000, self._cycle_status_message)
         self._animate_status_dots()
 
     def _animate_status_dots(self):
