@@ -3031,6 +3031,9 @@ class App:
         """Apply the responsive layout geometry to the AI panel."""
         if not self.ai_panel or not self.ai_panel.winfo_exists():
             return
+        # Only show the panel in API mode - redirect mode keeps it hidden
+        if self.pc_mode_var.get() != "api":
+            return
         geom = self._compute_ai_panel_geometry(expanded)
         if geom:
             # Ensure the panel is visible and on top (overrideredirect windows
@@ -3063,7 +3066,9 @@ class App:
         """Show the AI response panel (expanded) with responsive side/bottom layout."""
         if not self.ai_panel:
             return
-
+        # Only show the panel in API mode - redirect mode keeps it hidden
+        if self.pc_mode_var.get() != "api":
+            return
         self.ai_panel.deiconify()
         self.ai_panel.lift()
 
