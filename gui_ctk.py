@@ -1030,6 +1030,7 @@ class App:
 
         )
         self.pc_status_dot_count = 0  # Tracks animated dot count (0-3)
+        self.pc_status_recent_msgs = []  # Last 10 messages shown, to prevent repeats
 
         # AI Response slide-out panel state
 
@@ -2860,7 +2861,10 @@ class App:
         _log_debug(f"[STATUS CYCLE] ROTATE - current status='{self.pc_status_var.get()}'")
         self._stop_status_cycle()
         current = self.pc_status_var.get()
-        options = [m for m in DIABLO_FLAVOR_MESSAGES if m != current]
+        recent = set(self.pc_status_recent_msgs)
+        options = [m for m in DIABLO_FLAVOR_MESSAGES if m != current and m not in recent]
+        if not options:
+            options = [m for m in DIABLO_FLAVOR_MESSAGES if m != current]
         if not options:
             options = DIABLO_FLAVOR_MESSAGES
         new_msg = random.choice(options)
@@ -2870,6 +2874,10 @@ class App:
         if hasattr(self, "ai_response_text") and self.ai_response_text:
             self.ai_response_text.delete("0.0", "end")
             self.ai_response_text.insert("0.0", new_msg)
+        # Track last 10 messages to prevent immediate repeats
+        self.pc_status_recent_msgs.append(new_msg)
+        if len(self.pc_status_recent_msgs) > 10:
+            self.pc_status_recent_msgs.pop(0)
         _log_debug(f"[STATUS CYCLE] ROTATED - new status='{new_msg}', rescheduling in 3000ms")
         self._status_cycle_after_id = self.root.after(3000, self._cycle_status_message)
         self._animate_status_dots()
@@ -2881,6 +2889,13 @@ class App:
         current = self.pc_status_var.get()
         base = current.rstrip(".")
         self.pc_status_var.set(f"{base}{dots[self.pc_status_dot_count]}")
+        # Also update the AI results panel so dots animate there too
+        if hasattr(self, "ai_response_text") and self.ai_response_text:
+            try:
+                self.ai_response_text.delete("0.0", "end")
+                self.ai_response_text.insert("0.0", f"{base}{dots[self.pc_status_dot_count]}")
+            except Exception:
+                pass
         self._status_dot_after_id = self.root.after(250, self._animate_status_dots)
 
     def _stop_status_dots(self):
