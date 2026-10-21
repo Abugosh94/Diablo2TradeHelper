@@ -304,8 +304,15 @@ class PriceChecker:
                     break
                 time.sleep(0.5)
             if not already_open:
-                print(f"[pricecheck] Timed out waiting for {ai_tool} window; "
-                      f"proceeding anyway.")
+                on_result(False,
+                    f"Desktop app mode is selected for {ai_tool.title()}, "
+                    f"but the desktop app could not be launched or focused after "
+                    f"waiting up to 15 seconds.\n\n"
+                    f"Please double-check that your {ai_tool.title()} desktop app "
+                    f"is installed and that the exe path is correct:\n"
+                    f"  {exe_path}\n\n"
+                    f"Alternatively, switch to \"Open in browser\" mode.")
+                return
         else:
             # Try to focus an already-open AI tool tab (title match).
             # This handles the case where the AI tool is the active browser tab.
