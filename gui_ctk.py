@@ -1093,35 +1093,44 @@ class App:
         launch_frame = ctk.CTkFrame(self.pc_mode_frame, fg_color="transparent")
         launch_frame.grid(row=4, column=0, columnspan=3, sticky="w", padx=6, pady=(8, 2))
 
-        ctk.CTkRadioButton(
+        self.pc_ai_launch_browser_btn = ctk.CTkRadioButton(
             launch_frame,
             text="Open in browser", text_color=("#18181B", "#F4F4F5"),
             variable=self.pc_ai_launch_var, value="browser",
             command=self._on_pc_ai_launch_changed,
-        ).pack(side="left", padx=(0, 15))
+        )
+        self.pc_ai_launch_browser_btn.pack(anchor="w", pady=(0, 3))
 
-        ctk.CTkRadioButton(
+        self.pc_ai_launch_exe_btn = ctk.CTkRadioButton(
             launch_frame,
             text="Open desktop app (recommended)", text_color=("#18181B", "#F4F4F5"),
             variable=self.pc_ai_launch_var, value="exe",
             command=self._on_pc_ai_launch_changed,
-        ).pack(side="left", padx=(0, 15))
+        )
+        self.pc_ai_launch_exe_btn.pack(anchor="w")
 
-        ctk.CTkLabel(launch_frame, text="App exe path:", text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(15, 6))
+        # Exe path controls on a separate row
+        exe_row = ctk.CTkFrame(launch_frame, fg_color="transparent")
+        exe_row.pack(anchor="w", pady=(8, 0))
+
+        ctk.CTkLabel(exe_row, text="App exe path:", text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(0, 6))
 
         self.pc_ai_exe_entry = ctk.CTkEntry(
-            launch_frame, textvariable=self.pc_ai_exe_path_var, width=220,
+            exe_row, textvariable=self.pc_ai_exe_path_var, width=220,
             fg_color=("#F4F4F5", "#18181B"), border_color=("#E4E4E7", "#27272A"),
         )
         self.pc_ai_exe_entry.pack(side="left", padx=(0, 6))
 
         self.pc_ai_exe_browse_btn = ctk.CTkButton(
-            launch_frame, text="Browse", width=70,
+            exe_row, text="Browse", width=70,
             command=self._browse_ai_exe,
             fg_color=("#3B82F6", "#3B82F6"), hover_color=("#60A5FA", "#60A5FA"),
             text_color=("#18181B", "#F4F4F5"),
         )
         self.pc_ai_exe_browse_btn.pack(side="left")
+
+        # Set initial radio button states
+        self._update_launch_radio_states()
 
 
 
@@ -1768,6 +1777,17 @@ class App:
             self.pc_ai_exe_path_var.get(),
         )
         save_config(self.cfg)
+        self._update_launch_radio_states()
+
+    def _update_launch_radio_states(self):
+        """Gray out the unselected launch mode radio button."""
+        mode = self.pc_ai_launch_var.get()
+        if mode == "browser":
+            self.pc_ai_launch_browser_btn.configure(state="normal")
+            self.pc_ai_launch_exe_btn.configure(state="disabled")
+        else:
+            self.pc_ai_launch_browser_btn.configure(state="disabled")
+            self.pc_ai_launch_exe_btn.configure(state="normal")
 
     def _browse_ai_exe(self):
         """Open a file dialog to select the AI tool desktop app exe."""
@@ -2477,6 +2497,14 @@ class App:
             self._open_custom_ai_tool_dialog()
 
             return
+
+        # Load the selected tool's saved launch config (browser vs exe + exe path)
+        selected_key = self._pc_ai_key_by_label.get(selected)
+        if selected_key:
+            launch_mode, exe_path = self.price_checker._get_ai_launch_config(selected_key)
+            self.pc_ai_launch_var.set(launch_mode)
+            self.pc_ai_exe_path_var.set(exe_path or "")
+            self._update_launch_radio_states()
 
         is_api = self.pc_mode_var.get() == "api"
 
