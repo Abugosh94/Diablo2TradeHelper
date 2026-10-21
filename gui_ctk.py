@@ -131,19 +131,26 @@ def _log_error(text):
 
 def _log_debug(text):
 
-    try:
+    import datetime
 
-        import datetime
+    msg = "\n[{datetime.datetime.now():%Y-%m-%d %H:%M:%S.%f}]\n{text}\n".format(
+        datetime=datetime, text=text
+    )
+
+    # Also print to console so it's visible when running from terminal
+    print(msg, end="")
+
+    try:
 
         path = os.path.join(app_dir(), "debug_log.txt")
 
         with open(path, "a", encoding="utf-8") as f:
 
-            f.write("\n[{datetime.datetime.now():%Y-%m-%d %H:%M:%S.%f}]\n{text}\n".format(datetime=datetime, text=text))
+            f.write(msg)
 
-    except Exception:
+    except Exception as e:
 
-        pass
+        print(f"[DEBUG LOG ERROR] {e}")
 
 
 def format_hotkey(combo):
@@ -2682,6 +2689,8 @@ class App:
 
 
     def on_price_check(self):
+
+        self._log_debug(f"[PRICE CHECK] START - mode={self.pc_mode_var.get()}, tool={self.pc_ai_tool_var.get()}")
 
         # Validate: if redirect mode + desktop app selected but no valid exe path,
         # show error and highlight the entry field in red
