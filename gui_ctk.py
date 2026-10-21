@@ -1067,7 +1067,7 @@ class App:
 
         self.pc_ai_tool_label = ctk.CTkLabel(self.pc_mode_frame, text="AI tool:", text_color=("#18181B", "#F4F4F5"))
 
-        self.pc_ai_tool_label.grid(row=3, column=0, sticky="e", padx=6, pady=3)
+        self.pc_ai_tool_label.grid(row=3, column=0, sticky="e", padx=20, pady=3)
 
         self.pc_ai_tool_combo = ctk.CTkComboBox(
 
@@ -1085,13 +1085,13 @@ class App:
 
         self.pc_ai_tool_combo.grid(
 
-            row=3, column=1, columnspan=2, sticky="ew", padx=6, pady=3
+            row=3, column=1, columnspan=2, sticky="ew", padx=20, pady=3
 
         )
 
         # ---- AI launch mode: browser vs desktop app (exe) ----
-        launch_frame = ctk.CTkFrame(self.pc_mode_frame, fg_color="transparent")
-        launch_frame.grid(row=4, column=0, columnspan=3, sticky="w", padx=6, pady=(8, 2))
+        self.launch_frame = ctk.CTkFrame(self.pc_mode_frame, fg_color="transparent")
+        self.launch_frame.grid(row=4, column=0, columnspan=3, sticky="w", padx=20, pady=(8, 2))
 
         self.pc_ai_launch_browser_btn = ctk.CTkRadioButton(
             launch_frame,
@@ -1150,11 +1150,8 @@ class App:
 
         )
 
-        ctk.CTkLabel(self.pc_mode_frame, text="New chat behavior:", text_color=("#18181B", "#F4F4F5")).grid(
-
-            row=5, column=0, sticky="e", padx=6, pady=3
-
-        )
+        self.pc_new_chat_label = ctk.CTkLabel(self.pc_mode_frame, text="New chat behavior:", text_color=("#18181B", "#F4F4F5"))
+        self.pc_new_chat_label.grid(row=5, column=0, sticky="e", padx=20, pady=3)
 
         self.pc_new_chat_combo = ctk.CTkComboBox(
 
@@ -1171,7 +1168,7 @@ class App:
 
         self.pc_new_chat_combo.grid(
 
-            row=5, column=1, columnspan=2, sticky="ew", padx=6, pady=3
+            row=5, column=1, columnspan=2, sticky="ew", padx=20, pady=3
 
         )
 
@@ -2086,7 +2083,6 @@ class App:
 
 
     def _on_pc_mode_changed(self):
-
         mode = self.pc_mode_var.get()
 
         is_api = mode == "api"
@@ -2102,28 +2098,41 @@ class App:
                     row=3, column=0, columnspan=7, sticky="ew", padx=6, pady=(8, 0)
                 )
 
+            # Hide redirect-only options in API mode
+            self.pc_ai_tool_label.grid_remove()
+            self.pc_ai_tool_combo.grid_remove()
+            if hasattr(self, "launch_frame"):
+                self.launch_frame.grid_remove()
+            self.pc_new_chat_label.grid_remove()
+            self.pc_new_chat_combo.grid_remove()
+
             # Create the AI drawer if it doesn't exist yet (API mode needs it)
             if not hasattr(self, "ai_panel") or self.ai_panel is None:
                 self._create_ai_response_panel()
 
             # Auto-fetch models when switching to API mode with a key present
-
             if self.pc_api_key_var.get().strip():
-
                 self._on_pc_fetch_models()
 
         else:
-
             self.pc_api_key_frame.grid_remove()
             # Hide the API base URL field too (only relevant in API mode)
             if hasattr(self, "pc_api_base_url_frame"):
                 self.pc_api_base_url_frame.grid_remove()
+            # Show redirect-only options in redirect mode
+            self.pc_ai_tool_label.grid(row=3, column=0, sticky="e", padx=20, pady=3)
+            self.pc_ai_tool_combo.grid(row=3, column=1, columnspan=2, sticky="ew", padx=20, pady=3)
+            if hasattr(self, "launch_frame"):
+                self.launch_frame.grid(row=4, column=0, columnspan=3, sticky="w", padx=20, pady=(8, 2))
+            self.pc_new_chat_label.grid(row=5, column=0, sticky="e", padx=20, pady=3)
+            self.pc_new_chat_combo.grid(row=5, column=1, columnspan=2, sticky="ew", padx=20, pady=3)
             # Fully hide the AI drawer in redirect mode - results appear in the browser
             if hasattr(self, "ai_panel") and self.ai_panel is not None:
                 self.ai_panel.withdraw()
 
         if hasattr(self, "pc_model_label"):
             self._on_pc_ai_tool_changed()
+
 
     def _on_pc_api_key_changed(self):
         """Auto-fetch models when the user types/pastes an API key (API mode)."""
