@@ -1995,7 +1995,7 @@ class App:
 
             "D2TradeHelper - Close behavior",
 
-            "When you close the window, what would you like to do?\n\n"
+            "When you close the window, would you like to keep the app open?\n\n"
 
             "  Yes → Minimize to system tray (app keeps running in background)\n"
 
@@ -4122,7 +4122,7 @@ class App:
 
             "D2TradeHelper - Close behavior",
 
-            "When you close the window, what would you like to do?\n\n"
+            "When you close the window, would you like to keep the app open?\n\n"
 
             "  Yes → Minimize to system tray (app keeps running in background)\n"
 
