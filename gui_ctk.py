@@ -1110,8 +1110,8 @@ class App:
         self.pc_ai_launch_exe_btn.pack(anchor="w")
 
         # Exe path controls on a separate row
-        exe_row = ctk.CTkFrame(self.launch_frame, fg_color="transparent")
-        exe_row.pack(anchor="w", pady=(8, 0))
+        self.exe_row = ctk.CTkFrame(self.launch_frame, fg_color="transparent")
+        self.exe_row.pack(anchor="w", pady=(8, 0))
 
         ctk.CTkLabel(exe_row, text="App exe path:", text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(0, 6))
 
@@ -1777,16 +1777,19 @@ class App:
         self._update_launch_radio_states()
 
     def _update_launch_radio_states(self):
-        """Dim the unselected launch mode radio button (still clickable)."""
+        """Dim the unselected launch mode radio button (still clickable).
+        Hide the exe path row when browser mode is selected."""
         mode = self.pc_ai_launch_var.get()
         active_color = ("#18181B", "#F4F4F5")
         dim_color = ("#808080", "#505050")
         if mode == "browser":
             self.pc_ai_launch_browser_btn.configure(text_color=active_color)
             self.pc_ai_launch_exe_btn.configure(text_color=dim_color)
+            self.exe_row.pack_forget()
         else:
             self.pc_ai_launch_browser_btn.configure(text_color=dim_color)
             self.pc_ai_launch_exe_btn.configure(text_color=active_color)
+            self.exe_row.pack(anchor="w", pady=(8, 0))
 
     def _browse_ai_exe(self):
         """Open a file dialog to select the AI tool desktop app exe."""
@@ -3192,9 +3195,13 @@ class App:
         """Show the AI panel again when the main app window is restored.
 
         Only in API mode - redirect mode keeps the panel hidden since
-        results appear in the browser.
+        results appear in the browser. Force-hide it here in case something
+        else showed it while the window was unfocused.
         """
         if self.pc_mode_var.get() != "api":
+            # Force-hide the panel in redirect mode regardless of expanded state
+            if self.ai_panel and self.ai_panel.winfo_exists():
+                self.ai_panel.withdraw()
             return
         if self.ai_panel and self.ai_panel.winfo_exists():
             if self.ai_panel_expanded:
