@@ -1780,14 +1780,16 @@ class App:
         self._update_launch_radio_states()
 
     def _update_launch_radio_states(self):
-        """Gray out the unselected launch mode radio button."""
+        """Dim the unselected launch mode radio button (still clickable)."""
         mode = self.pc_ai_launch_var.get()
+        active_color = ("#18181B", "#F4F4F5")
+        dim_color = ("#808080", "#505050")
         if mode == "browser":
-            self.pc_ai_launch_browser_btn.configure(state="normal")
-            self.pc_ai_launch_exe_btn.configure(state="disabled")
+            self.pc_ai_launch_browser_btn.configure(text_color=active_color)
+            self.pc_ai_launch_exe_btn.configure(text_color=dim_color)
         else:
-            self.pc_ai_launch_browser_btn.configure(state="disabled")
-            self.pc_ai_launch_exe_btn.configure(state="normal")
+            self.pc_ai_launch_browser_btn.configure(text_color=dim_color)
+            self.pc_ai_launch_exe_btn.configure(text_color=active_color)
 
     def _browse_ai_exe(self):
         """Open a file dialog to select the AI tool desktop app exe."""
