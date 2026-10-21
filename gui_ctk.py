@@ -1094,7 +1094,7 @@ class App:
         self.launch_frame.grid(row=4, column=0, columnspan=3, sticky="w", padx=20, pady=(8, 2))
 
         self.pc_ai_launch_browser_btn = ctk.CTkRadioButton(
-            launch_frame,
+            self.launch_frame,
             text="Open in browser", text_color=("#18181B", "#F4F4F5"),
             variable=self.pc_ai_launch_var, value="browser",
             command=self._on_pc_ai_launch_changed,
@@ -1102,7 +1102,7 @@ class App:
         self.pc_ai_launch_browser_btn.pack(anchor="w", pady=(0, 3))
 
         self.pc_ai_launch_exe_btn = ctk.CTkRadioButton(
-            launch_frame,
+            self.launch_frame,
             text="Open desktop app (recommended)", text_color=("#18181B", "#F4F4F5"),
             variable=self.pc_ai_launch_var, value="exe",
             command=self._on_pc_ai_launch_changed,
@@ -1110,7 +1110,7 @@ class App:
         self.pc_ai_launch_exe_btn.pack(anchor="w")
 
         # Exe path controls on a separate row
-        exe_row = ctk.CTkFrame(launch_frame, fg_color="transparent")
+        exe_row = ctk.CTkFrame(self.launch_frame, fg_color="transparent")
         exe_row.pack(anchor="w", pady=(8, 0))
 
         ctk.CTkLabel(exe_row, text="App exe path:", text_color=("#18181B", "#F4F4F5")).pack(side="left", padx=(0, 6))
