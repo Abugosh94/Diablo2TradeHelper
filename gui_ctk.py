@@ -2881,7 +2881,7 @@ class App:
         current = self.pc_status_var.get()
         base = current.rstrip(".")
         self.pc_status_var.set(f"{base}{dots[self.pc_status_dot_count]}")
-        self._status_dot_after_id = self.root.after(333, self._animate_status_dots)
+        self._status_dot_after_id = self.root.after(250, self._animate_status_dots)
 
     def _stop_status_dots(self):
         """Cancel any pending dot animation."""
