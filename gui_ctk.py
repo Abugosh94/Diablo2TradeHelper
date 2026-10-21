@@ -1989,50 +1989,6 @@ class App:
 
 
 
-    def _prompt_close_behavior(self):
-
-        choice = messagebox.askyesnocancel(
-
-            "D2TradeHelper - Close behavior",
-
-            "When you close the window, would you like to keep the app open?\n\n"
-
-            "  Yes → Minimize to system tray (app keeps running in background)\n"
-
-            "  No   → Exit the app completely\n"
-
-            "  Cancel → Keep the window open",
-
-            icon="question", parent=self.root,
-
-        )
-
-        if choice is None:
-
-            return
-
-        if choice:
-
-            self.cfg["close_behavior"] = "minimize"
-
-        else:
-
-            self.cfg["close_behavior"] = "exit"
-
-        self.cfg["close_behavior_prompted"] = True
-
-        self.close_var.set(self.cfg["close_behavior"])
-
-        save_config(self.cfg)
-
-        if self.cfg["close_behavior"] == "minimize":
-
-            self._minimize_to_tray()
-
-        else:
-
-            self._shutdown()
-
 
 
     def _shutdown(self):
@@ -3152,21 +3108,17 @@ class App:
 
         # Determine which mode to restore on re-dock:
         # - If app is maximized → force bottom mode
-        # - If panel was in bottom mode before undocking → revert to side, collapsed
-        # - If panel was in side mode before undocking → restore previous side state
+        # - Otherwise restore whatever mode was active before undocking
+        #   (side stays side, bottom stays bottom)
         is_maximized = self.root.state() == "zoomed"
 
         if is_maximized:
             self.ai_panel_mode = "bottom"
             self.ai_panel_expanded = True
-        elif self.ai_panel_mode_before_undock == "bottom":
-            # Was bottom before undock → revert to side drawer, collapsed (small)
-            self.ai_panel_mode = "side"
-            self.ai_panel_expanded = False
         else:
-            # Was side before undock → restore previous side state
-            self.ai_panel_mode = "side"
+            self.ai_panel_mode = self.ai_panel_mode_before_undock
             self.ai_panel_expanded = self.ai_panel_expanded_before_undock
+
 
         self.ai_mode_btn.configure(
             text="⇄ Side" if self.ai_panel_mode == "bottom" else "⇄ Bottom"
@@ -4118,21 +4070,29 @@ class App:
 
     def _prompt_close_behavior(self):
 
-        choice = messagebox.askyesnocancel(
+        # Ensure the dialog appears in front of the AI response panel
+        # and any other windows by temporarily making the root topmost.
+        was_topmost = self.root.attributes("-topmost")
+        self.root.attributes("-topmost", True)
 
-            "D2TradeHelper - Close behavior",
+        try:
+            choice = messagebox.askyesnocancel(
 
-            "When you close the window, would you like to keep the app open?\n\n"
+                "D2TradeHelper - Close behavior",
 
-            "  Yes → Minimize to system tray (app keeps running in background)\n"
+                "When you close the window, would you like to keep the app open?\n\n"
 
-            "  No   → Exit the app completely\n"
+                "  Yes → Minimize to system tray (app keeps running in background)\n"
 
-            "  Cancel → Keep the window open",
+                "  No   → Exit the app completely\n"
 
-            icon="question", parent=self.root,
+                "  Cancel → Keep the window open",
 
-        )
+                icon="question", parent=self.root,
+
+            )
+        finally:
+            self.root.attributes("-topmost", was_topmost)
 
         if choice is None:
 
