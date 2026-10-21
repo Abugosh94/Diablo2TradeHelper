@@ -3080,6 +3080,11 @@ class App:
         self.ai_panel_mode_before_undock = self.ai_panel_mode
         self.ai_panel_expanded_before_undock = self.ai_panel_expanded
 
+        # When undocking, bottom mode reverts to side mode because an
+        # undocked window cannot be bottom-docked. Side mode stays side.
+        if self.ai_panel_mode == "bottom":
+            self.ai_panel_mode = "side"
+
         # Re-enable standard window framing (title bar) so the window can be dragged freely
         self.ai_panel.overrideredirect(False)
 
