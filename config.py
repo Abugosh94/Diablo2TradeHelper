@@ -86,6 +86,14 @@ DEFAULT_CONFIG = {
         "custom_ai_tools": [],
     },
     "theme": "system",  # 'system' | 'light' | 'dark' - defaults to system default
+    "trading_site": {
+        "site": "diablo2io",
+        "custom_sites": [],
+        "sites": {
+            "diablo2io": "https://diablo2.io/posting.php?f=16&mode=post",
+            "diablotrade": "https://d2r.diablo.trade/marketplace/create"
+        }
+    }
 }
 
 

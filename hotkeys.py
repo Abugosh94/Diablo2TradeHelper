@@ -518,11 +518,11 @@ def focus_and_paste(url=None, max_wait=4.0, min_settle=0.2, baseline_hwnd=None):
             time.sleep(0.1)
 
         # Only d2r.diablo.trade/marketplace/create requires the user to
-        # click "Sell" or "Buy" before the paste handler is active. Give the
-        # user up to 15 s to make that choice, then paste.
+        # click "Sell" or "Buy" before the paste handler is active. Wait
+        # until the user clicks (no time limit), then paste.
         if url and "d2r.diablo.trade/marketplace/create" in url.lower():
             print("[hotkeys] Waiting for user to click Sell/Buy before pasting...")
-            wait_for_left_click(timeout=13.0)
+            wait_for_left_click(timeout=None)
 
         time.sleep(min_settle)           # final grace for the paste handler
         user32.keybd_event(VK_CONTROL, 0, 0, 0)
