@@ -206,12 +206,19 @@ def get_start_with_windows():
         return False
 
 
-def _build_title_hints(url_hint=None):
+def _build_title_hints(url_hint=None, include_tool_hints=True):
     """Build a list of case-insensitive substring hints used to match a
     browser window title against the selected AI tool URL.
 
     Only AI-tool-specific hints are used - trading sites are never matched
     here, so a bookmarks page or trading tab won't be mistaken for the AI tool.
+
+    Args:
+        url_hint: A URL (e.g. "gemini.google.com") or a tool name (e.g. "gemini").
+        include_tool_hints: When False (used for browser mode), only domain-based
+            hints are generated so desktop app windows are NOT matched.
+            When True (used for exe/desktop app mode), tool name hints are
+            included so desktop app windows CAN be matched by title.
 
     Returns a list of lowercase hint strings.
     """
@@ -233,21 +240,23 @@ def _build_title_hints(url_hint=None):
                 if len(parts) >= 2:
                     hints.append(".".join(parts[-2:]))
                 # AI-tool-specific short hints (window titles show page
-                # names, not full domains)
-                if "gemini" in low:
-                    hints += ["gemini", "google gemini"]
-                elif "chatgpt" in low or "openai" in low:
-                    hints += ["chatgpt", "chat gpt", "openai", "chat.openai.com"]
+                # names, not full domains) - only for desktop app matching
+                if include_tool_hints:
+                    if "gemini" in low:
+                        hints += ["gemini", "google gemini"]
+                    elif "chatgpt" in low or "openai" in low:
+                        hints += ["chatgpt", "chat gpt", "openai", "chat.openai.com"]
         except Exception:
             pass
     else:
         # Treat as a tool name hint (e.g. "gemini", "chatgpt") for
         # focusing desktop app windows by title.
         hints.append(low)
-        if "gemini" in low:
-            hints += ["gemini", "google gemini"]
-        elif "chatgpt" in low or "openai" in low:
-            hints += ["chatgpt", "chat gpt", "openai", "chat.openai.com"]
+        if include_tool_hints:
+            if "gemini" in low:
+                hints += ["gemini", "google gemini"]
+            elif "chatgpt" in low or "openai" in low:
+                hints += ["chatgpt", "chat gpt", "openai", "chat.openai.com"]
     return hints
 
 
@@ -388,7 +397,11 @@ def focus_browser_window(url_hint=None, timeout=3.0):
     (the paste logic still runs - if the user focuses the browser in time,
     the paste lands).
     """
-    hints = _build_title_hints(url_hint)
+    # Browser mode: only match domain hints (e.g. "gemini.google.com",
+    # "google.com"), not tool name hints (e.g. "gemini", "google gemini").
+    # This prevents desktop app windows from being matched when the user
+    # selected "Open in browser".
+    hints = _build_title_hints(url_hint, include_tool_hints=False)
 
     try:
         user32 = ctypes.windll.user32
