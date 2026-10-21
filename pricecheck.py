@@ -287,29 +287,17 @@ class PriceChecker:
         # Step 1: Try to focus / launch the AI tool
         already_open = False
         if use_exe:
-            # First try to focus an already-running instance of the app.
-            # This keeps it on whatever screen it is already on - we never
-            # launch a new window if one is already open.
-            already_open = focus_browser_window(ai_tool)
-
-            if not already_open:
-                # App not running - launch it (it will open on its default screen)
-                try:
-                    os.startfile(exe_path)
-                except Exception:
-                    pass
-                # Wait for the app window to appear (desktop apps load at
-                # different speeds, so poll instead of using a fixed sleep).
-                t0 = time.time()
-                wait_for_exe = 10.0  # total seconds to wait for the app window
-                while time.time() - t0 < wait_for_exe:
-                    if focus_browser_window(ai_tool):
-                        already_open = True
-                        break
-                    time.sleep(0.5)
-                if not already_open:
-                    print(f"[pricecheck] Timed out waiting for {ai_tool} window; "
-                          f"proceeding anyway.")
+            # Desktop app mode: launch directly without checking for existing
+            # windows via focus_browser_window. That function matches window
+            # titles by key hints (e.g. "gemini", "chatgpt") which can catch
+            # browser tabs or unrelated windows instead of the desktop app.
+            try:
+                os.startfile(exe_path)
+            except Exception:
+                pass
+            # Wait briefly for the app to launch and become ready.
+            time.sleep(2.0)
+            already_open = True
         else:
             # Try to focus an already-open AI tool tab (title match).
             # This handles the case where the AI tool is the active browser tab.
