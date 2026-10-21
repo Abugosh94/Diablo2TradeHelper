@@ -76,10 +76,31 @@ APP_VERSION = "0.2"
 # Subtle Diablo-flavored status messages shown while a price check is in flight.
 # One is chosen at random each time the user requests a price check.
 DIABLO_FLAVOR_MESSAGES = [
-    "Consulting the Horadric Cube...",
-    "Appraising item stats...",
-    "Reading the runes...",
-    "Checking the trade stash...",
+    "Consulting the Horadric Cube",
+    "Appraising item stats",
+    "Reading the runes",
+    "Checking the trade stash",
+    "Stay awhile and listen",
+    "Consulting with Deckard Cain",
+    "Checking Gheed's questionable inventory",
+    "Asking Akara to cleanse your connection",
+    "Waiting for Larzuk to punch another socket",
+    "Listening to Ormus ramble in Kurast",
+    "Transmuting items in the Horadric Cube",
+    "Repairing durability on all equipped gear",
+    "Appraising rare rings and amulets",
+    "Rolling high stats on a low-roll base",
+    "Extracting runes from the socket",
+    "Opening Town Portal",
+    "Activating the Waypoint network",
+    "Deciphering an unidentified scroll",
+    "Channeling through the Arcane Sanctuary",
+    "Drinking a stamina potion",
+    "Bypassing the Council in Travincal",
+    "Chasing the Dark Wanderer through Act III",
+    "Feeding souls to Mephisto's compel",
+    "Waiting for Baal's demonic laugh to finish",
+    "Opening the Gates of Pandemonium",
 ]
 
 # Map raw backend error messages to clean, actionable user-facing messages.
@@ -1008,6 +1029,7 @@ class App:
             value="Idle. Capture a tooltip and click Price Check."
 
         )
+        self.pc_status_dot_count = 0  # Tracks animated dot count (0-3)
 
         # AI Response slide-out panel state
 
@@ -1424,6 +1446,15 @@ class App:
             font=("Segoe UI", 12, "bold"),
             justify="center",
         ).grid(row=1, column=0, sticky="ew", padx=6, pady=(0, 3))
+
+        self.pc_status_label = ctk.CTkLabel(
+            self.pc_bind_label_frame,
+            textvariable=self.pc_status_var,
+            text_color=("#18181B", "#F4F4F5"),
+            font=("Segoe UI", 11, "italic"),
+            justify="center",
+        )
+        self.pc_status_label.grid(row=2, column=0, sticky="ew", padx=6, pady=(0, 3))
 
 
 
@@ -2810,11 +2841,15 @@ class App:
         """Begin cycling the status message through Diablo-flavored text
         so the user knows a price check is in progress."""
         self._stop_status_cycle()
+        self._stop_status_dots()
+        self.pc_status_dot_count = 0
         _log_debug(f"[STATUS CYCLE] START - after_id=None, first rotation in 3000ms")
         self._status_cycle_after_id = self.root.after(3000, self._cycle_status_message)
+        self._animate_status_dots()
 
     def _stop_status_cycle(self):
         """Cancel any pending status-message cycle."""
+        self._stop_status_dots()
         if self._status_cycle_after_id is not None:
             _log_debug(f"[STATUS CYCLE] STOP - cancelling after_id={self._status_cycle_after_id}")
             try:
@@ -2839,12 +2874,32 @@ class App:
         self.pc_status_var.set(new_msg)
         _log_debug(f"[STATUS CYCLE] ROTATED - new status='{new_msg}', rescheduling in 3000ms")
         self._status_cycle_after_id = self.root.after(3000, self._cycle_status_message)
+        self._animate_status_dots()
+
+    def _animate_status_dots(self):
+        """Cycle the trailing dots on the status message (., .., ..., ....)."""
+        dots = ["", ".", "..", "...", "...."]
+        self.pc_status_dot_count = (self.pc_status_dot_count + 1) % len(dots)
+        current = self.pc_status_var.get()
+        base = current.rstrip(".")
+        self.pc_status_var.set(f"{base}{dots[self.pc_status_dot_count]}")
+        self._status_dot_after_id = self.root.after(500, self._animate_status_dots)
+
+    def _stop_status_dots(self):
+        """Cancel any pending dot animation."""
+        if hasattr(self, "_status_dot_after_id") and self._status_dot_after_id is not None:
+            try:
+                self.root.after_cancel(self._status_dot_after_id)
+            except Exception:
+                pass
+            self._status_dot_after_id = None
 
     def _pc_on_result(self, success, message):
 
         # Stop cycling the status message now that the request is done
         _log_debug(f"[STATUS CYCLE] PC_RESULT - stopping cycle, success={success}, mode={self.pc_mode_var.get()}")
         self._stop_status_cycle()
+        self.pc_status_dot_count = 0
 
         if self.pc_mode_var.get() == "api":
 
