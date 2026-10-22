@@ -287,32 +287,26 @@ class PriceChecker:
         # Step 1: Try to focus / launch the AI tool
         already_open = False
         if use_exe:
-            # Desktop app mode: launch directly, then poll for the app window
-            # to appear instead of using a fixed sleep (load time varies per user).
-            # focus_browser_window(ai_tool) matches desktop app windows by title
-            # hints (e.g. "gemini", "chatgpt") - not browser tabs - because
-            # ai_tool is a tool name, not a URL.
+            # Desktop app mode: launch directly, then give it a moment to open.
+            # os.startfile() brings the app to the foreground naturally on Windows.
+            # Do NOT call focus_browser_window() here: it uses SetForegroundWindow()
+            # which can move an existing app window from a secondary monitor onto
+            # the primary monitor. Launching via os.startfile preserves the window's
+            # current monitor position.
             try:
                 os.startfile(exe_path)
             except Exception:
-                pass
-            t0 = time.time()
-            wait_for_exe = 15.0  # total seconds to wait for the app window
-            while time.time() - t0 < wait_for_exe:
-                if focus_browser_window(ai_tool, timeout=1.0):
-                    already_open = True
-                    break
-                time.sleep(0.5)
-            if not already_open:
                 on_result(False,
                     f"Desktop app mode is selected for {ai_tool.title()}, "
-                    f"but the desktop app could not be launched or focused after "
-                    f"waiting up to 15 seconds.\n\n"
+                    f"but the desktop app could not be launched.\n\n"
                     f"Please double-check that your {ai_tool.title()} desktop app "
                     f"is installed and that the exe path is correct:\n"
                     f"  {exe_path}\n\n"
                     f"Alternatively, switch to \"Open in browser\" mode.")
                 return
+            already_open = True
+            # Give the app time to appear on screen before we send keys.
+            time.sleep(2.0)
         else:
             # Try to focus an already-open AI tool tab (title match).
             # This handles the case where the AI tool is the active browser tab.
