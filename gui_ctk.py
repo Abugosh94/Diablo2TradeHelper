@@ -152,10 +152,13 @@ def _log_error(text):
 
 def _log_debug(text):
 
-    from datetime import datetime
+    try:
+        from datetime import datetime
 
-    now = datetime.now()
-    msg = f"\n[{now:%Y-%m-%d %H:%M:%S.%f}]\n{text}\n"
+        now = datetime.now()
+        msg = f"\n[{now:%Y-%m-%d %H:%M:%S.%f}]\n{text}\n"
+    except Exception:
+        msg = f"\n[??:??:?? ??-??-?? ??:??:??.??????]\n{text}\n"
 
     # Also print to console so it's visible when running from terminal
     print(msg, end="")
