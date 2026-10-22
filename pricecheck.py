@@ -325,10 +325,30 @@ class PriceChecker:
                     f"or switch to \"Open in browser\" mode.")
                 return
         else:
-            # Browser mode: always open a new tab. Don't try to detect an
-            # existing browser tab by title - that can match desktop app
-            # windows (e.g. Electron apps use Chrome_WidgetWin_1 class).
-            already_open = False
+            # Browser mode.
+            if not new_chat_each_time:
+                # Continue same chat: don't open a new tab. Focus the existing
+                # browser window (domain hints only - safe, won't match desktop
+                # app windows) and paste directly. The user must have the
+                # browser window with the right chat already focused.
+                already_open = focus_browser_window(url)
+                if already_open:
+                    import ctypes
+                    ctypes.windll.user32.MessageBoxW(
+                        0,
+                        f"Continue same chat: make sure the {ai_tool.title()} "
+                        f"chat window you want to continue is focused in the "
+                        f"browser, then click OK. The prompt and screenshot "
+                        f"will be pasted into that window.",
+                        f"Price Check - Continue same chat ({ai_tool.title()})",
+                        0x00000040,  # MB_ICONINFORMATION
+                    )
+                else:
+                    print(f"[pricecheck] Continue same chat: no browser window found, "
+                          f"falling back to new tab")
+            else:
+                # New chat each time: always open a new tab.
+                already_open = False
 
         if already_open:
             # Give the window a moment to settle as foreground.
