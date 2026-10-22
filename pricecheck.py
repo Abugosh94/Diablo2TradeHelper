@@ -279,12 +279,12 @@ class PriceChecker:
         already_open = False
         if use_exe:
             # Desktop app mode: launch the exe (user chose this mode), then
-            # focus its window without moving it between monitors.
-            # os.startfile() uses ShellExecute which runs the exe directly.
+            # find its window without moving it between monitors.
+            # os.startfile() uses ShellExecute which runs the exe directly
+            # and typically brings it to the foreground naturally.
             print(f"[pricecheck] exe mode, ai_tool={ai_tool!r}, exe_path={exe_path!r}")
             try:
                 os.startfile(exe_path)
-                print(f"[pricecheck] os.startfile({exe_path!r}) launched")
             except Exception:
                 on_result(False,
                     f"Desktop app mode is selected for {ai_tool.title()}, "
@@ -294,7 +294,9 @@ class PriceChecker:
                     f"  {exe_path}\n\n"
                     f"Alternatively, switch to \"Open in browser\" mode.")
                 return
-            # Poll for up to 10 seconds for the app window to appear
+            # Poll for up to 10 seconds for the app window to appear.
+            # focus_exe_window() only finds/restores the window - it does NOT
+            # call SetForegroundWindow, so the window stays on its current monitor.
             t0 = time.time()
             while time.time() - t0 < 10.0:
                 if focus_exe_window(ai_tool):
@@ -305,7 +307,7 @@ class PriceChecker:
             if not already_open:
                 on_result(False,
                     f"Desktop app mode is selected for {ai_tool.title()}, "
-                    f"but the desktop app window could not be focused.\n\n"
+                    f"but the desktop app window could not be found.\n\n"
                     f"Please make sure the AI desktop app is running and visible, "
                     f"or switch to \"Open in browser\" mode.")
                 return
@@ -316,8 +318,10 @@ class PriceChecker:
 
         if already_open:
             # Give the window a moment to settle as foreground.
-            # Desktop apps settle faster than browsers.
-            settle = 0.2 if use_exe else 0.3
+            # No SetForegroundWindow is used for exe mode (to avoid moving
+            # windows between monitors), so wait longer for os.startfile()
+            # to naturally bring the app to the foreground.
+            settle = 2.0 if use_exe else 0.3
             time.sleep(settle)
             # Paste into current chat - no new-chat cycling in Redirect mode
         else:
