@@ -3356,7 +3356,8 @@ class App:
         os.makedirs(export_dir, exist_ok=True)
 
         # Generate filename with timestamp
-        now = datetime.datetime.now()
+        from datetime import datetime
+        now = datetime.now()
         timestamp = now.strftime("%Y%m%d_%H%M%S")
         if is_image:
             filename = f"AI_Response_{timestamp}.png"
