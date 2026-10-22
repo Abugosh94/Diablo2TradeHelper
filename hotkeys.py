@@ -436,40 +436,72 @@ def focus_exe_window(ai_tool=None, timeout=3.0):
 
     Unlike focus_browser_window(), this does NOT call BringWindowToTop()
     (which can reposition windows across monitors). It restores the window
-    if minimized (keeping it on the same monitor) and uses SetForegroundWindow
-    alone to activate it.
+    if minimized (keeping it on the same monitor), uses AllowSetForegroundWindow
+    + AttachThreadInput to work around fullscreen games (Diablo II) that
+    block SetForegroundWindow, then calls SetForegroundWindow alone to
+    activate it without changing its monitor position.
 
     Returns True when a window was focused, False otherwise.
     """
     hints = _build_title_hints(ai_tool, include_tool_hints=True)
     if not hints:
+        print(f"[focus_exe_window] No hints for ai_tool={ai_tool!r}")
         return False
 
     try:
         user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
     except Exception as e:
         print(f"[hotkeys] focus_exe_window unavailable: {e}")
         return False
 
     current_pid = os.getpid()
+    cur_thread = kernel32.GetCurrentThreadId()
+
+    def _allow_foreground():
+        try:
+            user32.AllowSetForegroundWindow(cur_thread)
+        except Exception:
+            pass
+
+    def _attached_foreground(hwnd):
+        """SetForegroundWindow with AttachThreadInput, no BringWindowToTop."""
+        fg_thread = user32.GetWindowThreadProcessId(
+            user32.GetForegroundWindow(), None
+        )
+        attached = False
+        try:
+            if fg_thread != cur_thread:
+                user32.AttachThreadInput(fg_thread, cur_thread, True)
+                attached = True
+            user32.SetForegroundWindow(hwnd)
+        finally:
+            if attached:
+                user32.AttachThreadInput(fg_thread, cur_thread, False)
 
     for _attempt in range(2):
         hwnd = _find_matching_window(user32, hints, current_pid)
         if hwnd:
+            print(f"[focus_exe_window] Found window hwnd={hwnd} for {ai_tool!r}")
             # Restore if minimized - keeps window on the same monitor
             if user32.IsIconic(hwnd):
                 user32.ShowWindow(hwnd, 9)  # SW_RESTORE
                 time.sleep(0.3)
-            # SetForegroundWindow alone - no BringWindowToTop, which can
-            # move windows across monitors. SetForegroundWindow only changes
-            # activation state, not position.
-            user32.SetForegroundWindow(hwnd)
-            t0 = time.time()
-            while time.time() - t0 < timeout:
-                if user32.GetForegroundWindow() == hwnd:
-                    return True
-                time.sleep(0.05)
-            return user32.GetForegroundWindow() == hwnd
+            # Try SetForegroundWindow twice (like _focus_window) to work
+            # around fullscreen games that briefly block it.
+            for _try in range(2):
+                _allow_foreground()
+                _attached_foreground(hwnd)
+                t0 = time.time()
+                while time.time() - t0 < timeout:
+                    if user32.GetForegroundWindow() == hwnd:
+                        print(f"[focus_exe_window] Foreground achieved for {ai_tool!r}")
+                        return True
+                    time.sleep(0.05)
+            result = user32.GetForegroundWindow() == hwnd
+            print(f"[focus_exe_window] Foreground result={result} for {ai_tool!r}")
+            return result
+        print(f"[focus_exe_window] No matching window found (attempt {_attempt + 1})")
         time.sleep(0.3)
 
     return False

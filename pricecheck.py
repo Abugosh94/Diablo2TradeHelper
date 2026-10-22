@@ -282,12 +282,15 @@ class PriceChecker:
             # it between monitors. SetForegroundWindow alone (no
             # BringWindowToTop) keeps the window on its current monitor.
             # If no instance is running, launch it with os.startfile().
+            print(f"[pricecheck] exe mode, ai_tool={ai_tool!r}, exe_path={exe_path!r}")
             already_open = focus_exe_window(ai_tool)
+            print(f"[pricecheck] focus_exe_window returned {already_open}")
             if not already_open:
                 try:
                     os.startfile(exe_path)
                     time.sleep(2.0)
                     already_open = focus_exe_window(ai_tool)
+                    print(f"[pricecheck] after launch, focus_exe_window returned {already_open}")
                 except Exception:
                     on_result(False,
                         f"Desktop app mode is selected for {ai_tool.title()}, "
