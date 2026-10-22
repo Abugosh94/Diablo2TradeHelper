@@ -1184,6 +1184,8 @@ class App:
 
             "New chat each time" if new_chat_each_time else "Continue same chat"
 
+        # Track whether the Continue same chat popup has been shown (only show once on selection)
+        self._continue_same_chat_popup_shown = False
         )
 
         self.pc_new_chat_label = ctk.CTkLabel(self.pc_mode_frame, text="New chat behavior:", text_color=("#18181B", "#F4F4F5"))
@@ -1198,7 +1200,7 @@ class App:
             values=["New chat each time", "Continue same chat"],
 
             width=200,
-            command=lambda _v: self._on_pc_ai_tool_changed(),
+            command=lambda _v: self._on_pc_new_chat_changed(),
 
         )
 
@@ -1794,6 +1796,27 @@ class App:
 
 
 
+    def _on_pc_new_chat_changed(self):
+        """Handle New chat behavior dropdown changes.
+
+        Show the Continue same chat popup only once when the user selects
+        "Continue same chat" from the dropdown - not on every price check.
+        """
+        value = self.pc_new_chat_var.get()
+        if value == "Continue same chat" and not self._continue_same_chat_popup_shown:
+            self._continue_same_chat_popup_shown = True
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "Continue same chat mode: Please focus the chat window you want "
+                "to continue in (browser or desktop app), then click OK. The "
+                "prompt and screenshot will be pasted there.",
+                "Price Check - Continue same chat",
+                0x00000040,  # MB_ICONINFORMATION
+            )
+        elif value == "New chat each time":
+            self._continue_same_chat_popup_shown = False
+
     def _on_pc_model_changed(self, *args):
 
         self.cfg.setdefault("price_check", {})["ai_model"] = self.pc_model_var.get()
@@ -2151,6 +2174,8 @@ class App:
             self.pc_model_label.grid_remove()
 
             self.pc_model_combo.grid_remove()
+
+
 
             return
 
@@ -2541,6 +2566,27 @@ class App:
             self.pc_model_combo.grid_remove()
 
 
+
+    def _on_pc_new_chat_changed(self):
+        """Handle New chat behavior dropdown changes.
+
+        Show the Continue same chat popup only once when the user selects
+        "Continue same chat" from the dropdown - not on every price check.
+        """
+        value = self.pc_new_chat_var.get()
+        if value == "Continue same chat" and not self._continue_same_chat_popup_shown:
+            self._continue_same_chat_popup_shown = True
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "Continue same chat mode: Please focus the chat window you want "
+                "to continue in (browser or desktop app), then click OK. The "
+                "prompt and screenshot will be pasted there.",
+                "Price Check - Continue same chat",
+                0x00000040,  # MB_ICONINFORMATION
+            )
+        elif value == "New chat each time":
+            self._continue_same_chat_popup_shown = False
 
     def _on_pc_model_changed(self, *args):
 
@@ -4579,6 +4625,8 @@ def main():
 if __name__ == "__main__":
 
     main()
+
+
 
 
 

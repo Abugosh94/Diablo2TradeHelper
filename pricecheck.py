@@ -335,16 +335,7 @@ class PriceChecker:
                     # Try browser window using tool hints (page title match)
                     already_open = focus_browser_window(url, include_tool_hints=True)
                 if already_open:
-                    import ctypes
-                    ctypes.windll.user32.MessageBoxW(
-                        0,
-                        f"Continue same chat mode ({ai_tool.title()}): "
-                        f"Please focus the {ai_tool.title()} chat window you want "
-                        f"to continue in (browser or desktop app), then click OK. "
-                        f"The prompt and screenshot will be pasted there.",
-                        f"Price Check - Continue same chat ({ai_tool.title()})",
-                        0x00000040,  # MB_ICONINFORMATION
-                    )
+                    pass  # Popup already shown when dropdown was changed to "Continue same chat"
                 else:
                     print(f"[pricecheck] Continue same chat: no existing window found "
                           f"for {ai_tool}. Please open the AI tool first.")
