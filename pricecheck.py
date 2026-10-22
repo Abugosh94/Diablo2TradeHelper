@@ -338,10 +338,10 @@ class PriceChecker:
                     import ctypes
                     ctypes.windll.user32.MessageBoxW(
                         0,
-                        f"Continue same chat: make sure the {ai_tool.title()} "
-                        f"chat window you want to continue is focused in the "
-                        f"browser or desktop app, then click OK. The prompt "
-                        f"and screenshot will be pasted into that window.",
+                        f"Continue same chat mode ({ai_tool.title()}): "
+                        f"Please focus the {ai_tool.title()} chat window you want "
+                        f"to continue in (browser or desktop app), then click OK. "
+                        f"The prompt and screenshot will be pasted there.",
                         f"Price Check - Continue same chat ({ai_tool.title()})",
                         0x00000040,  # MB_ICONINFORMATION
                     )
