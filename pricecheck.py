@@ -278,26 +278,13 @@ class PriceChecker:
         # Step 1: Try to focus / launch the AI tool
         already_open = False
         if use_exe:
-            # Desktop app mode: launch directly, then give it a moment to open.
-            # os.startfile() brings the app to the foreground naturally on Windows.
-            # Do NOT call focus_browser_window() here: it uses SetForegroundWindow()
-            # which can move an existing app window from a secondary monitor onto
-            # the primary monitor. Launching via os.startfile preserves the window's
-            # current monitor position.
-            try:
-                os.startfile(exe_path)
-            except Exception:
-                on_result(False,
-                    f"Desktop app mode is selected for {ai_tool.title()}, "
-                    f"but the desktop app could not be launched.\n\n"
-                    f"Please double-check that your {ai_tool.title()} desktop app "
-                    f"is installed and that the exe path is correct:\n"
-                    f"  {exe_path}\n\n"
-                    f"Alternatively, switch to \"Open in browser\" mode.")
-                return
+            # Desktop app mode: do NOT launch or focus the app here.
+            # os.startfile() / SetForegroundWindow() can move an existing
+            # app window from a secondary monitor onto the primary monitor.
+            # The user is responsible for having the AI desktop app open
+            # on whatever screen they want it on. We simply paste into the
+            # foreground window.
             already_open = True
-            # Give the app time to appear on screen before we send keys.
-            time.sleep(2.0)
         else:
             # Try to focus an already-open AI tool tab (title match).
             # This handles the case where the AI tool is the active browser tab.
