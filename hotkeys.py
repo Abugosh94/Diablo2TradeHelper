@@ -382,7 +382,7 @@ def _focus_window(user32, hwnd, timeout):
         return False
 
 
-def focus_browser_window(url_hint=None, timeout=3.0):
+def focus_browser_window(url_hint=None, timeout=3.0, include_tool_hints=False):
     """Bring the trading-site / AI-tool browser tab to the foreground.
 
     webbrowser.open() opens the URL in a NEW TAB, but if the browser window
@@ -391,15 +391,25 @@ def focus_browser_window(url_hint=None, timeout=3.0):
     contains a hint from the URL (domain or page title) and restores +
     focuses it, so the page is actually visible.
 
+    Args:
+        url_hint: A URL (e.g. "gemini.google.com") or tool name (e.g. "gemini").
+        timeout: Seconds to wait for the window to come to the foreground.
+        include_tool_hints: When True, also match tool name hints (e.g.
+            "gemini", "google gemini") so browser tabs can be found by page
+            title. Used by "Continue same chat" mode. When False (default),
+            only domain hints are matched to avoid matching desktop app
+            windows when the user selected "Open in browser".
+
     Best effort: returns True when a window was focused, False otherwise
     (the paste logic still runs - if the user focuses the browser in time,
     the paste lands).
     """
-    # Browser mode: only match domain hints (e.g. "gemini.google.com",
-    # "google.com"), not tool name hints (e.g. "gemini", "google gemini").
-    # This prevents desktop app windows from being matched when the user
-    # selected "Open in browser".
-    hints = _build_title_hints(url_hint, include_tool_hints=False)
+    # When include_tool_hints is True (Continue same chat), match both
+    # domain hints and tool name hints so browser tabs can be found by
+    # their page title (e.g. "Gemini") rather than just the domain.
+    # When False (Open in browser / new tab), only domain hints are used
+    # to prevent matching desktop app windows.
+    hints = _build_title_hints(url_hint, include_tool_hints=include_tool_hints)
 
     try:
         user32 = ctypes.windll.user32

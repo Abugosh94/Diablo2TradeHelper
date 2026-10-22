@@ -3025,6 +3025,17 @@ class App:
         )
         self.ai_mode_btn.pack(side="right", padx=5, pady=5)
 
+        # Export button: save AI response as PDF or Image
+        self.ai_export_btn = ctk.CTkButton(
+            self.ai_title_bar,
+            text="Export",
+            width=70,
+            command=self._export_ai_response,
+            fg_color=("#3B82F6", "#3B82F6"),
+            hover_color=("#60A5FA", "#60A5FA"),
+        )
+        self.ai_export_btn.pack(side="right", padx=5, pady=5)
+
         self.ai_title_label = ctk.CTkLabel(
             self.ai_title_bar,
             text="AI Response",
@@ -3269,6 +3280,223 @@ class App:
         self.ai_response_text.delete("0.0", "end")
         self.ai_response_text.insert("0.0", message)
         self._show_ai_panel()
+
+    def _export_ai_response(self):
+        """Export the AI response to PDF or Image in the Results folder."""
+        text = self.ai_response_text.get("0.0", "end").strip()
+        if not text:
+            messagebox.showwarning(
+                "Export", "No AI response to export.", parent=self.root
+            )
+            return
+
+        # Ask user to choose format: Yes = Image (PNG), No = PDF
+        choice = messagebox.askquestion(
+            "Export AI Response",
+            "Export as Image (PNG)?\n\n"
+            "Click 'Yes' for Image, 'No' for PDF.",
+            icon="question",
+            parent=self.root,
+        )
+        if choice == "cancel":
+            return
+
+        is_image = choice == "yes"
+
+        # Determine results folder: <app_dir>/Results/<PDF|Image>/
+        results_dir = os.path.join(app_dir(), "Results")
+        subfolder = "Image" if is_image else "PDF"
+        export_dir = os.path.join(results_dir, subfolder)
+        os.makedirs(export_dir, exist_ok=True)
+
+        # Generate filename with timestamp
+        now = datetime.datetime.now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        if is_image:
+            filename = f"AI_Response_{timestamp}.png"
+            filepath = os.path.join(export_dir, filename)
+            self._export_as_image(text, filepath)
+        else:
+            filename = f"AI_Response_{timestamp}.pdf"
+            filepath = os.path.join(export_dir, filename)
+            self._export_as_pdf(text, filepath)
+
+        messagebox.showinfo(
+            "Export Complete",
+            f"AI response exported to:\n{filepath}",
+            parent=self.root,
+        )
+
+    def _export_as_image(self, text, filepath):
+        """Export text as a PNG image using PIL."""
+        from PIL import Image, ImageDraw, ImageFont
+
+        lines = text.split("\n")
+        font_size = 16
+        try:
+            font = ImageFont.truetype("consola.ttf", font_size)
+        except Exception:
+            try:
+                font = ImageFont.truetype("Courier New.ttf", font_size)
+            except Exception:
+                font = ImageFont.load_default()
+
+        # Measure text dimensions
+        max_width = 0
+        total_height = 0
+        line_heights = []
+        for line in lines:
+            bbox = font.getbbox(line)
+            w = bbox[2] - bbox[0]
+            h = bbox[3] - bbox[1]
+            max_width = max(max_width, w)
+            total_height += h + 6
+            line_heights.append(h)
+
+        padding = 40
+        img_width = max(max_width + padding * 2, 400)
+        img_height = total_height + padding * 2
+
+        img = Image.new("RGB", (img_width, img_height), "white")
+        draw = ImageDraw.Draw(img)
+
+        y = padding
+        for i, line in enumerate(lines):
+            draw.text((padding, y), line, font=font, fill="black")
+            y += line_heights[i] + 6
+
+        img.save(filepath, "PNG")
+
+    def _export_as_pdf(self, text, filepath):
+        """Export text as a PDF file using reportlab if available."""
+        try:
+            from reportlab.pdfgen import canvas as pdf_canvas
+            from reportlab.lib.pagesizes import letter
+
+            c = pdf_canvas.Canvas(filepath, pagesize=letter)
+            width, height = letter
+            c.setFont("Helvetica", 12)
+
+            y = height - 50
+            for line in text.split("\n"):
+                if y < 50:
+                    c.showPage()
+                    c.setFont("Helvetica", 12)
+                    y = height - 50
+                c.drawString(50, y, line)
+                y -= 14
+
+            c.save()
+        except ImportError:
+            # Fallback: create a minimal PDF manually without reportlab
+            self._export_as_pdf_fallback(text, filepath)
+
+    def _export_as_pdf_fallback(self, text, filepath):
+        """Create a minimal PDF file without external dependencies."""
+        # Escape special characters for PDF strings
+        def pdf_escape(s):
+            s = s.replace("\\", "\\\\")
+            s = s.replace("(", "\\(")
+            s = s.replace(")", "\\)")
+            return s
+
+        lines = text.split("\n")
+        # Build content stream
+        content_lines = []
+        y = 742  # Start near top of letter page (792 pts)
+        content_lines.append("BT /F1 12 Tf 50 742 Td")
+        for line in lines:
+            if y < 50:
+                content_lines.append("ET")
+                content_lines.append("showpage")
+                content_lines.append("BT /F1 12 Tf 50 742 Td")
+                y = 742
+            escaped = pdf_escape(line)
+            content_lines.append(f"({escaped}) Tj 0 -14 Td")
+            y -= 14
+        content_lines.append("ET")
+        content_stream = "\n".join(content_lines)
+
+    def _export_as_pdf_fallback(self, text, filepath):
+        """Create a minimal PDF file without external dependencies."""
+
+        def pdf_escape(s):
+            s = s.replace("\\", "\\\\")
+            s = s.replace("(", "\\(")
+            s = s.replace(")", "\\)")
+            return s
+
+        lines = text.split("\n")
+
+        # Build content stream
+        content_parts = []
+        y = 742
+        content_parts.append("BT /F1 12 Tf 50 742 Td")
+        for line in lines:
+            if y < 50:
+                content_parts.append("ET")
+                content_parts.append("showpage")
+                content_parts.append("BT /F1 12 Tf 50 742 Td")
+                y = 742
+            escaped = pdf_escape(line)
+            content_parts.append(f"({escaped}) Tj 0 -14 Td")
+            y -= 14
+        content_parts.append("ET")
+        content_stream = "\n".join(content_parts)
+        content_bytes = content_stream.encode("latin-1")
+
+        # Build PDF object table
+        obj1 = b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+        obj2 = b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
+        obj3 = b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n"
+        obj4 = b"4 0 obj\n<< /Length %d >>\nstream\n%s\nendstream\nendobj\n" % (
+            len(content_bytes),
+            content_bytes,
+        )
+        obj5 = b"5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\nendobj\n"
+
+        # Calculate offsets
+        offset1 = 0
+        offset2 = offset1 + len(obj1)
+        offset3 = offset2 + len(obj2)
+        offset4 = offset3 + len(obj3)
+        offset5 = offset4 + len(obj4)
+
+        xref_table = b"xref\n0 6\n"
+        xref_table += b"0000000000 65535 f \n"
+        xref_table += f"{offset1:010d} 00000 n \n".encode("latin-1")
+        xref_table += f"{offset2:010d} 00000 n \n".encode("latin-1")
+        xref_table += f"{offset3:010d} 00000 n \n".encode("latin-1")
+        xref_table += f"{offset4:010d} 00000 n \n".encode("latin-1")
+        xref_table += f"{offset5:010d} 00000 n \n".encode("latin-1")
+
+        trailer = b"trailer\n<< /Size 6 /Root 1 0 R >>\n"
+        startxref_pos = (
+            len(obj1)
+            + len(obj2)
+            + len(obj3)
+            + len(obj4)
+            + len(obj5)
+            + len(xref_table)
+            + len(trailer)
+        )
+        startxref_line = f"startxref\n{startxref_pos}\n%%EOF\n".encode("latin-1")
+
+        pdf_bytes = (
+            b"%PDF-1.4\n"
+            + obj1
+            + obj2
+            + obj3
+            + obj4
+            + obj5
+            + xref_table
+            + trailer
+            + startxref_line
+        )
+
+        with open(filepath, "wb") as f:
+            f.write(pdf_bytes)
+
 
     def _position_ai_panel_initial(self):
         """Position the AI panel at the right edge after the root window is mapped."""
@@ -4351,6 +4579,7 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
 
 

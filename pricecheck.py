@@ -328,24 +328,29 @@ class PriceChecker:
             # Browser mode.
             if not new_chat_each_time:
                 # Continue same chat: don't open a new tab. Focus the existing
-                # browser window (domain hints only - safe, won't match desktop
-                # app windows) and paste directly. The user must have the
-                # browser window with the right chat already focused.
-                already_open = focus_browser_window(url)
+                # browser window or desktop app window, then paste directly.
+                # The user must have the chat window already focused.
+                already_open = focus_exe_window(ai_tool)
+                if not already_open:
+                    # Try browser window using tool hints (page title match)
+                    already_open = focus_browser_window(url, include_tool_hints=True)
                 if already_open:
                     import ctypes
                     ctypes.windll.user32.MessageBoxW(
                         0,
                         f"Continue same chat: make sure the {ai_tool.title()} "
                         f"chat window you want to continue is focused in the "
-                        f"browser, then click OK. The prompt and screenshot "
-                        f"will be pasted into that window.",
+                        f"browser or desktop app, then click OK. The prompt "
+                        f"and screenshot will be pasted into that window.",
                         f"Price Check - Continue same chat ({ai_tool.title()})",
                         0x00000040,  # MB_ICONINFORMATION
                     )
                 else:
-                    print(f"[pricecheck] Continue same chat: no browser window found, "
-                          f"falling back to new tab")
+                    print(f"[pricecheck] Continue same chat: no existing window found "
+                          f"for {ai_tool}. Please open the AI tool first.")
+                    # Don't open a new tab - just proceed so user can manually
+                    # focus the window before paste lands.
+                    already_open = False
             else:
                 # New chat each time: always open a new tab.
                 already_open = False
