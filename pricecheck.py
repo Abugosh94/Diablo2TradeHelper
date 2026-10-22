@@ -214,10 +214,8 @@ class PriceChecker:
         """Open the AI tool in the browser and paste the filled prompt
         + tooltip screenshot into it.
 
-        If the AI tool tab is already open in an existing browser window:
-          - If new_chat_each_time is True: press the tool's new-chat keybind
-            (e.g. Ctrl+Shift+O) to start a fresh conversation, then paste.
-          - If new_chat_each_time is False: paste into the current chat.
+        If the AI tool tab is already open in an existing browser window,
+        paste into the current chat (no new-chat cycling in Redirect mode).
 
         Otherwise open a new tab and fully automate paste + submit.
         """
