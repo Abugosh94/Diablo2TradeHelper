@@ -222,8 +222,6 @@ class PriceChecker:
         Otherwise open a new tab and fully automate paste + submit.
         """
         url = self._ai_tool_url(ai_tool)
-        new_chat_kb_str = self._ai_tool_new_chat_keybind(ai_tool)
-        new_chat_kb = self._parse_keybind(new_chat_kb_str) if new_chat_kb_str else None
 
         from hotkeys import focus_browser_window
         import ctypes
@@ -276,11 +274,6 @@ class PriceChecker:
             """Press Enter to submit the pasted content."""
             _press(VK_RETURN)
 
-        # Read user preference for new-chat behavior
-        new_chat_each_time = self.cfg.setdefault("price_check", {}).get(
-            "new_chat_each_time", True
-        )
-
         # Always copy the prompt to clipboard first
         text_to_clipboard(filled_prompt)
 
@@ -317,20 +310,7 @@ class PriceChecker:
             # Desktop apps settle faster than browsers.
             settle = 0.2 if use_exe else 0.3
             time.sleep(settle)
-            if new_chat_each_time and new_chat_kb:
-                # Wait for the AI tool page / app to finish loading before
-                # starting a new chat, so Ctrl+Shift+O lands on a ready input box.
-                # Desktop apps don't have browser pages to load, so skip this
-                # when using an exe.
-                if not use_exe:
-                    self._wait_for_page_ready()
-                # Start a new chat in the existing tab/window
-                _press_combo(*new_chat_kb)
-                # Give the new chat UI a moment to appear.
-                # Desktop apps are faster than browsers.
-                post_kb = 1.0 if use_exe else 2.0
-                time.sleep(post_kb)
-            # If new_chat_each_time is False, we paste into the current chat
+            # Paste into current chat - no new-chat cycling in Redirect mode
         else:
             # No existing AI tool window found - open a new browser tab
             webbrowser.open(url)
@@ -339,14 +319,7 @@ class PriceChecker:
             focused = focus_browser_window(url)
             if focused:
                 time.sleep(0.3)
-            # New tab opens on the homepage - start a fresh chat so the
-            # conversation doesn't get named after the item
-            if new_chat_each_time and new_chat_kb:
-                # Wait for the browser to actually open/load the AI tool tab
-                # before sending the new-chat keybind.
-                self._wait_for_page_ready()
-                _press_combo(*new_chat_kb)
-                time.sleep(2.0)
+            # New tab opens on the homepage - paste into the current chat
 
         # Paste the prompt text (Ctrl+V)
         _paste_clipboard()
@@ -369,31 +342,17 @@ class PriceChecker:
         preview = filled_prompt.strip()
         if len(preview) > 200:
             preview = preview[:200] + "..."
-        if already_open and new_chat_each_time:
-            msg = (
-                f"Focused existing {ai_tool.capitalize()} tab, started a new "
-                f"chat ({new_chat_kb_str}), and pasted the price check prompt "
-                f"+ screenshot (submitted).\n\n--- Prompt ---\n{preview}"
-            )
-        elif already_open:
+        if already_open:
             msg = (
                 f"Focused existing {ai_tool.capitalize()} tab and pasted into "
                 f"the current chat.\n\n--- Prompt ---\n{preview}"
             )
         else:
-            if new_chat_each_time:
-                msg = (
-                    f"Opened {ai_tool.capitalize()} in a new tab, started a "
-                    f"new chat ({new_chat_kb_str}), and pasted the price "
-                    f"check prompt + screenshot (submitted).\n\n"
-                    f"--- Prompt ---\n{preview}"
-                )
-            else:
-                msg = (
-                    f"Opened {ai_tool.capitalize()} in a new tab and pasted "
-                    f"the price check prompt + screenshot (submitted).\n\n"
-                    f"--- Prompt ---\n{preview}"
-                )
+            msg = (
+                f"Opened {ai_tool.capitalize()} in a new tab and pasted "
+                f"the price check prompt + screenshot (submitted).\n\n"
+                f"--- Prompt ---\n{preview}"
+            )
         on_result(True, msg)
 
     @staticmethod
