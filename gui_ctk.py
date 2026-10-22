@@ -134,13 +134,13 @@ def _log_error(text):
 
     try:
 
-        import datetime
+        from datetime import datetime
 
         path = os.path.join(app_dir(), "error_log.txt")
 
         with open(path, "a", encoding="utf-8") as f:
 
-            f.write(f"\n[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}]\n{text}\n")
+            f.write(f"\n[{datetime.now():%Y-%m-%d %H:%M:%S}]\n{text}\n")
 
     except Exception:
 
@@ -152,9 +152,9 @@ def _log_error(text):
 
 def _log_debug(text):
 
-    import datetime
+    from datetime import datetime
 
-    now = datetime.datetime.now()
+    now = datetime.now()
     msg = f"\n[{now:%Y-%m-%d %H:%M:%S.%f}]\n{text}\n"
 
     # Also print to console so it's visible when running from terminal
