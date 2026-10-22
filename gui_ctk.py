@@ -3074,17 +3074,6 @@ class App:
         )
         self.ai_mode_btn.pack(side="right", padx=5, pady=5)
 
-        # Export button: save AI response as PDF or Image
-        self.ai_export_btn = ctk.CTkButton(
-            self.ai_title_bar,
-            text="Export",
-            width=70,
-            command=self._export_ai_response,
-            fg_color=("#3B82F6", "#3B82F6"),
-            hover_color=("#60A5FA", "#60A5FA"),
-        )
-        self.ai_export_btn.pack(side="right", padx=5, pady=5)
-
         self.ai_title_label = ctk.CTkLabel(
             self.ai_title_bar,
             text="AI Response",
@@ -3104,6 +3093,24 @@ class App:
             wrap="word",
         )
         self.ai_response_text.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Bottom button bar: Export button (kept at bottom so top title bar
+        # stays uncluttered in Side mode)
+        self.ai_bottom_btn_bar = ctk.CTkFrame(
+            parent, fg_color="transparent", height=30
+        )
+        self.ai_bottom_btn_bar.pack(fill="x", padx=5, pady=(0, 5))
+        self.ai_bottom_btn_bar.pack_propagate(False)
+
+        self.ai_export_btn = ctk.CTkButton(
+            self.ai_bottom_btn_bar,
+            text="Export",
+            width=70,
+            command=self._export_ai_response,
+            fg_color=("#3B82F6", "#3B82F6"),
+            hover_color=("#60A5FA", "#60A5FA"),
+        )
+        self.ai_export_btn.pack(side="right", padx=5, pady=5)
 
     def _compute_ai_panel_geometry(self, expanded):
         """Compute the geometry string for the AI panel based on user-selected mode.
@@ -3334,20 +3341,21 @@ class App:
         """Export the AI response to PDF or Image in the Results folder."""
         text = self.ai_response_text.get("0.0", "end").strip()
         if not text:
-            messagebox.showwarning(
-                "Export", "No AI response to export.", parent=self.root
+            self._show_topmost_messagebox(
+                "showwarning",
+                "Export",
+                "No AI response to export.",
             )
             return
 
         # Ask user to choose format: Yes = Image (PNG), No = PDF
-        choice = messagebox.askquestion(
+        choice = self._show_topmost_messagebox(
+            "askquestion",
             "Export AI Response",
             "Export as Image (PNG)?\n\n"
             "Click 'Yes' for Image, 'No' for PDF.",
-            icon="question",
-            parent=self.root,
         )
-        if choice == "cancel":
+        if choice == "cancel" or choice == "":
             return
 
         is_image = choice == "yes"
@@ -3371,11 +3379,44 @@ class App:
             filepath = os.path.join(export_dir, filename)
             self._export_as_pdf(text, filepath)
 
-        messagebox.showinfo(
+        self._show_topmost_messagebox(
+            "showinfo",
             "Export Complete",
             f"AI response exported to:\n{filepath}",
-            parent=self.root,
         )
+
+    def _show_topmost_messagebox(self, kind, title, message):
+        """Show a messagebox parented to the AI panel so it appears on top.
+
+        The AI panel uses overrideredirect=True which can cause standard
+        messageboxes (parented to root) to appear behind it. This helper
+        temporarily raises the panel above all windows, shows the dialog
+        parented to the panel, then restores the topmost state.
+        """
+        panel = self.ai_panel
+        if panel is None or not panel.winfo_exists():
+            # Fallback: parent to root if panel isn't ready
+            if kind == "showwarning":
+                return messagebox.showwarning(title, message, parent=self.root)
+            elif kind == "showinfo":
+                return messagebox.showinfo(title, message, parent=self.root)
+            elif kind == "askquestion":
+                return messagebox.askquestion(title, message, icon="question", parent=self.root)
+            else:
+                return messagebox.showinfo(title, message, parent=self.root)
+        was_topmost = panel.attributes("-topmost")
+        try:
+            panel.attributes("-topmost", True)
+            if kind == "showwarning":
+                return messagebox.showwarning(title, message, parent=panel)
+            elif kind == "showinfo":
+                return messagebox.showinfo(title, message, parent=panel)
+            elif kind == "askquestion":
+                return messagebox.askquestion(title, message, icon="question", parent=panel)
+            else:
+                return messagebox.showinfo(title, message, parent=panel)
+        finally:
+            panel.attributes("-topmost", was_topmost)
 
     def _export_as_image(self, text, filepath):
         """Export text as a PNG image using PIL."""
