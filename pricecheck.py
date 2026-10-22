@@ -285,22 +285,28 @@ class PriceChecker:
         # Step 1: Try to focus / launch the AI tool
         already_open = False
         if use_exe:
-            # Desktop app mode: launch the exe (user chose this mode), then
-            # find its window without moving it between monitors.
-            # os.startfile() uses ShellExecute which runs the exe directly
-            # and typically brings it to the foreground naturally.
+            # Desktop app mode: focus an already-open app window in place,
+            # only launching the exe if no matching window is found.
+            # Calling os.startfile() on an already-running app can cause
+            # Windows to move it to the primary monitor, so we avoid it
+            # when the app is already open.
             print(f"[pricecheck] exe mode, ai_tool={ai_tool!r}, exe_path={exe_path!r}")
-            try:
-                os.startfile(exe_path)
-            except Exception:
-                on_result(False,
-                    f"Desktop app mode is selected for {ai_tool.title()}, "
-                    f"but the desktop app could not be launched.\n\n"
-                    f"Please double-check that your {ai_tool.title()} desktop app "
-                    f"is installed and that the exe path is correct:\n"
-                    f"  {exe_path}\n\n"
-                    f"Alternatively, switch to \"Open in browser\" mode.")
-                return
+            if focus_exe_window(ai_tool):
+                # App already open on some monitor - focus it in place.
+                already_open = True
+            else:
+                # App not running - launch it, then poll for its window.
+                try:
+                    os.startfile(exe_path)
+                except Exception:
+                    on_result(False,
+                        f"Desktop app mode is selected for {ai_tool.title()}, "
+                        f"but the desktop app could not be launched.\n\n"
+                        f"Please double-check that your {ai_tool.title()} desktop app "
+                        f"is installed and that the exe path is correct:\n"
+                        f"  {exe_path}\n\n"
+                        f"Alternatively, switch to \"Open in browser\" mode.")
+                    return
             # Poll for up to 10 seconds for the app window to appear.
             # focus_exe_window() only finds/restores the window - it does NOT
             # call SetForegroundWindow, so the window stays on its current monitor.
@@ -319,9 +325,10 @@ class PriceChecker:
                     f"or switch to \"Open in browser\" mode.")
                 return
         else:
-            # Try to focus an already-open AI tool tab (title match).
-            # This handles the case where the AI tool is the active browser tab.
-            already_open = focus_browser_window(url)
+            # Browser mode: always open a new tab. Don't try to detect an
+            # existing browser tab by title - that can match desktop app
+            # windows (e.g. Electron apps use Chrome_WidgetWin_1 class).
+            already_open = False
 
         if already_open:
             # Give the window a moment to settle as foreground.

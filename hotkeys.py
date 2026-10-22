@@ -309,8 +309,6 @@ def _find_matching_window(user32, hints, current_pid):
 
 
 
-
-
 def _focus_window(user32, hwnd, timeout):
     """Foreground the given hwnd.  Returns True when it is actually the
     foreground window within timeout seconds.
@@ -435,10 +433,11 @@ def focus_exe_window(ai_tool=None, timeout=3.0):
     moving it between monitors.
 
     Calls SetForegroundWindow ALONE (no BringWindowToTop) to activate the
-    window on its current monitor. BringWindowToTop is what can reposition
-    windows across monitors; SetForegroundWindow only changes activation
-    state. Uses AllowSetForegroundWindow + AttachThreadInput to work around
-    fullscreen games (Diablo II) that normally block SetForegroundWindow.
+    window on its current monitor. Before activation, captures the window
+    position; if SetForegroundWindow moves it to another monitor, the window
+    is moved back to its original coordinates. Uses AllowSetForegroundWindow
+    + AttachThreadInput to work around fullscreen games (Diablo II) that
+    normally block SetForegroundWindow.
 
     Returns True when a matching app window is found and activated,
     False otherwise.
@@ -479,6 +478,11 @@ def focus_exe_window(ai_tool=None, timeout=3.0):
             if attached:
                 user32.AttachThreadInput(fg_thread, cur_thread, False)
 
+    def _window_rect(hwnd):
+        rect = wintypes.RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        return (rect.left, rect.top, rect.right, rect.bottom)
+
     for _attempt in range(2):
         hwnd = _find_matching_window(user32, hints, current_pid)
         if hwnd:
@@ -496,6 +500,9 @@ def focus_exe_window(ai_tool=None, timeout=3.0):
             if user32.IsIconic(hwnd):
                 user32.ShowWindow(hwnd, 9)  # SW_RESTORE
                 time.sleep(0.3)
+            # Capture position BEFORE SetForegroundWindow so we can move it
+            # back if activation repositions it onto the primary monitor.
+            original_rect = _window_rect(hwnd)
             # Activate with SetForegroundWindow alone (no BringWindowToTop)
             # so the window stays on its current monitor.
             _allow_foreground()
@@ -504,6 +511,18 @@ def focus_exe_window(ai_tool=None, timeout=3.0):
             while time.time() - t0 < timeout:
                 if user32.GetForegroundWindow() == hwnd:
                     print(f"[focus_exe_window] Foreground achieved for {ai_tool!r}")
+                    # If SetForegroundWindow moved the window to another
+                    # monitor, move it back to its original position.
+                    new_rect = _window_rect(hwnd)
+                    if new_rect != original_rect:
+                        print(f"[focus_exe_window] Window moved from {original_rect} to {new_rect}; moving back")
+                        w, h = original_rect[2] - original_rect[0], original_rect[3] - original_rect[1]
+                        user32.SetWindowPos(
+                            hwnd, 0,
+                            original_rect[0], original_rect[1],
+                            w, h,
+                            0x0002 | 0x0004 | 0x0008 | 0x0010  # SWP_NOZORDER | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOACTIVATE
+                        )
                     return True
                 time.sleep(0.05)
             result = user32.GetForegroundWindow() == hwnd
@@ -619,3 +638,4 @@ def focus_and_paste(url=None, max_wait=4.0, min_settle=0.2, baseline_hwnd=None):
     except Exception as e:
         print(f"[hotkeys] Auto-paste failed: {e}")
         return False
+

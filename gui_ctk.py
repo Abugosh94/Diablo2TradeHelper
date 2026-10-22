@@ -160,17 +160,7 @@ def _log_debug(text):
     # Also print to console so it's visible when running from terminal
     print(msg, end="")
 
-    try:
-
-        path = os.path.join(app_dir(), "debug_log.txt")
-
-        with open(path, "a", encoding="utf-8") as f:
-
-            f.write(msg)
-
-    except Exception as e:
-
-        print(f"[DEBUG LOG ERROR] {e}")
+    pass
 
 
 def format_hotkey(combo):
