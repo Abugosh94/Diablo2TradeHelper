@@ -221,7 +221,7 @@ class PriceChecker:
         """
         url = self._ai_tool_url(ai_tool)
 
-        from hotkeys import focus_browser_window
+        from hotkeys import focus_browser_window, focus_exe_window
         import ctypes
         import time
 
@@ -278,13 +278,25 @@ class PriceChecker:
         # Step 1: Try to focus / launch the AI tool
         already_open = False
         if use_exe:
-            # Desktop app mode: do NOT launch or focus the app here.
-            # os.startfile() / SetForegroundWindow() can move an existing
-            # app window from a secondary monitor onto the primary monitor.
-            # The user is responsible for having the AI desktop app open
-            # on whatever screen they want it on. We simply paste into the
-            # foreground window.
-            already_open = True
+            # Desktop app mode: focus an existing exe window without moving
+            # it between monitors. SetForegroundWindow alone (no
+            # BringWindowToTop) keeps the window on its current monitor.
+            # If no instance is running, launch it with os.startfile().
+            already_open = focus_exe_window(ai_tool)
+            if not already_open:
+                try:
+                    os.startfile(exe_path)
+                    time.sleep(2.0)
+                    already_open = focus_exe_window(ai_tool)
+                except Exception:
+                    on_result(False,
+                        f"Desktop app mode is selected for {ai_tool.title()}, "
+                        f"but the desktop app could not be launched.\n\n"
+                        f"Please double-check that your {ai_tool.title()} desktop app "
+                        f"is installed and that the exe path is correct:\n"
+                        f"  {exe_path}\n\n"
+                        f"Alternatively, switch to \"Open in browser\" mode.")
+                    return
         else:
             # Try to focus an already-open AI tool tab (title match).
             # This handles the case where the AI tool is the active browser tab.

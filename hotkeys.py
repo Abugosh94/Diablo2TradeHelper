@@ -430,6 +430,51 @@ def focus_browser_window(url_hint=None, timeout=3.0):
 
 
 
+def focus_exe_window(ai_tool=None, timeout=3.0):
+    """Bring an AI desktop app window to the foreground WITHOUT moving
+    it between monitors.
+
+    Unlike focus_browser_window(), this does NOT call BringWindowToTop()
+    (which can reposition windows across monitors). It restores the window
+    if minimized (keeping it on the same monitor) and uses SetForegroundWindow
+    alone to activate it.
+
+    Returns True when a window was focused, False otherwise.
+    """
+    hints = _build_title_hints(ai_tool, include_tool_hints=True)
+    if not hints:
+        return False
+
+    try:
+        user32 = ctypes.windll.user32
+    except Exception as e:
+        print(f"[hotkeys] focus_exe_window unavailable: {e}")
+        return False
+
+    current_pid = os.getpid()
+
+    for _attempt in range(2):
+        hwnd = _find_matching_window(user32, hints, current_pid)
+        if hwnd:
+            # Restore if minimized - keeps window on the same monitor
+            if user32.IsIconic(hwnd):
+                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                time.sleep(0.3)
+            # SetForegroundWindow alone - no BringWindowToTop, which can
+            # move windows across monitors. SetForegroundWindow only changes
+            # activation state, not position.
+            user32.SetForegroundWindow(hwnd)
+            t0 = time.time()
+            while time.time() - t0 < timeout:
+                if user32.GetForegroundWindow() == hwnd:
+                    return True
+                time.sleep(0.05)
+            return user32.GetForegroundWindow() == hwnd
+        time.sleep(0.3)
+
+    return False
+
+
 
 def wait_for_left_click(timeout=None):
     """Block until the user clicks the left mouse button.
