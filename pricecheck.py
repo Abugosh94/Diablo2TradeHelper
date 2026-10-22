@@ -156,7 +156,7 @@ class PriceChecker:
         pc.setdefault("ai_tool", "gemini")
         pc.setdefault("api_key", "")
         pc.setdefault("platform", "PC")
-        pc.setdefault("ladder_status", "Ladder")
+        pc.setdefault("ladder_status", "Non-Ladder")
         pc.setdefault("hardcore_status", "Softcore")
         pc.setdefault("marketplaces", list(DEFAULT_MARKETPLACES))
         pc.setdefault("timeframe", "Last 7 Days")

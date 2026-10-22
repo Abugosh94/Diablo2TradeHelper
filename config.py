@@ -77,7 +77,7 @@ DEFAULT_CONFIG = {
         "ai_tool": "gemini",  # 'gemini', 'chatgpt', or 'custom:<name>'
         "api_key": "",
         "platform": "PC",
-        "ladder_status": "Ladder",
+        "ladder_status": "Non-Ladder",
         "hardcore_status": "Softcore",
         "marketplaces": ["Traderie", "Diablo2.io", "Diablo.Trade"],
         "timeframe": "Last 7 Days",
