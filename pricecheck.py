@@ -220,6 +220,8 @@ class PriceChecker:
         Otherwise open a new tab and fully automate paste + submit.
         """
         url = self._ai_tool_url(ai_tool)
+        new_chat_kb_str = self._ai_tool_new_chat_keybind(ai_tool)
+        new_chat_kb = self._parse_keybind(new_chat_kb_str) if new_chat_kb_str else None
 
         from hotkeys import focus_browser_window, focus_exe_window
         import ctypes
@@ -275,6 +277,11 @@ class PriceChecker:
         # Always copy the prompt to clipboard first
         text_to_clipboard(filled_prompt)
 
+        # Read user preference for new-chat behavior
+        new_chat_each_time = self.cfg.setdefault("price_check", {}).get(
+            "new_chat_each_time", True
+        )
+
         # Step 1: Try to focus / launch the AI tool
         already_open = False
         if use_exe:
@@ -323,7 +330,13 @@ class PriceChecker:
             # to naturally bring the app to the foreground.
             settle = 2.0 if use_exe else 0.3
             time.sleep(settle)
-            # Paste into current chat - no new-chat cycling in Redirect mode
+            # Start a fresh chat before pasting, so the input field is focused
+            if new_chat_each_time and new_chat_kb:
+                print(f"[pricecheck] starting new chat with {new_chat_kb_str}")
+                _press_combo(*new_chat_kb)
+                post_kb = 1.0 if use_exe else 2.0
+                time.sleep(post_kb)
+                print(f"[pricecheck] new chat key sent, waited {post_kb}s")
         else:
             # No existing AI tool window found - open a new browser tab
             webbrowser.open(url)
@@ -335,15 +348,19 @@ class PriceChecker:
             # New tab opens on the homepage - paste into the current chat
 
         # Paste the prompt text (Ctrl+V)
+        print(f"[pricecheck] about to paste prompt, already_open={already_open}")
         _paste_clipboard()
         time.sleep(0.5)
+        print(f"[pricecheck] prompt pasted")
 
         # Paste the screenshot image (Ctrl+V) - both prompt and image
         # are now in the input box waiting to be submitted together
         time.sleep(1.0)
+        print(f"[pricecheck] putting image on clipboard")
         image_to_clipboard(pil_img)
         time.sleep(0.5)
         _paste_clipboard()
+        print(f"[pricecheck] image pasted")
 
         # Wait for the image to finish uploading before submitting.
         # Applies to both browser and desktop app modes - upload speed
