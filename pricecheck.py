@@ -288,9 +288,21 @@ class PriceChecker:
             if not already_open:
                 try:
                     os.startfile(exe_path)
-                    time.sleep(2.0)
-                    already_open = focus_exe_window(ai_tool)
-                    print(f"[pricecheck] after launch, focus_exe_window returned {already_open}")
+                    # Poll for up to 10 seconds for the app window to appear
+                    t0 = time.time()
+                    while time.time() - t0 < 10.0:
+                        if focus_exe_window(ai_tool):
+                            already_open = True
+                            break
+                        time.sleep(0.5)
+                    print(f"[pricecheck] after launch+poll, already_open={already_open}")
+                    if not already_open:
+                        on_result(False,
+                            f"Desktop app mode is selected for {ai_tool.title()}, "
+                            f"but the desktop app window could not be focused.\n\n"
+                            f"Please make sure the AI desktop app is running and visible, "
+                            f"or switch to \"Open in browser\" mode.")
+                        return
                 except Exception:
                     on_result(False,
                         f"Desktop app mode is selected for {ai_tool.title()}, "
