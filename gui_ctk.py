@@ -1184,12 +1184,12 @@ class App:
         )
 
         self.pc_new_chat_var.set(
-
             "New chat each time" if new_chat_each_time else "Continue same chat"
+        )
 
         # Track whether the Continue same chat popup has been shown (only show once on selection)
         self._continue_same_chat_popup_shown = False
-        )
+
 
         self.pc_new_chat_label = ctk.CTkLabel(self.pc_mode_frame, text="New chat behavior:", text_color=("#18181B", "#F4F4F5"))
         self.pc_new_chat_label.grid(row=5, column=0, sticky="e", padx=20, pady=3)
