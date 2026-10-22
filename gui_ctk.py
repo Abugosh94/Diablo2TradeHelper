@@ -2813,8 +2813,12 @@ class App:
         # Show a "thinking" indicator in the AI panel so the user knows
         # the request is in flight (AI model calls can take several seconds).
         self._show_ai_response(random.choice(DIABLO_FLAVOR_MESSAGES))
-        # Start cycling the status message so the user knows work is in progress
-        self._start_status_cycle()
+        # Start cycling the status message only in API key mode.
+        # In Redirect mode the AI tool window handles the waiting UX itself,
+        # so the rotating status text is unnecessary (and noisy in the CMD).
+        if mode == "api":
+            # Start cycling the status message so the user knows work is in progress
+            self._start_status_cycle()
 
 
 
@@ -2910,8 +2914,10 @@ class App:
     def _pc_on_result(self, success, message):
 
         # Stop cycling the status message now that the request is done
-        _log_debug(f"[STATUS CYCLE] PC_RESULT - stopping cycle, success={success}, mode={self.pc_mode_var.get()}")
-        self._stop_status_cycle()
+        # (only relevant in API mode where the cycle was started).
+        if self.pc_mode_var.get() == "api":
+            _log_debug(f"[STATUS CYCLE] PC_RESULT - stopping cycle, success={success}, mode={self.pc_mode_var.get()}")
+            self._stop_status_cycle()
         self.pc_status_dot_count = 0
 
         if self.pc_mode_var.get() == "api":
