@@ -278,40 +278,37 @@ class PriceChecker:
         # Step 1: Try to focus / launch the AI tool
         already_open = False
         if use_exe:
-            # Desktop app mode: focus an existing exe window without moving
-            # it between monitors. SetForegroundWindow alone (no
-            # BringWindowToTop) keeps the window on its current monitor.
-            # If no instance is running, launch it with os.startfile().
+            # Desktop app mode: launch the exe (user chose this mode), then
+            # focus its window without moving it between monitors.
+            # os.startfile() uses ShellExecute which runs the exe directly.
             print(f"[pricecheck] exe mode, ai_tool={ai_tool!r}, exe_path={exe_path!r}")
-            already_open = focus_exe_window(ai_tool)
-            print(f"[pricecheck] focus_exe_window returned {already_open}")
+            try:
+                os.startfile(exe_path)
+                print(f"[pricecheck] os.startfile({exe_path!r}) launched")
+            except Exception:
+                on_result(False,
+                    f"Desktop app mode is selected for {ai_tool.title()}, "
+                    f"but the desktop app could not be launched.\n\n"
+                    f"Please double-check that your {ai_tool.title()} desktop app "
+                    f"is installed and that the exe path is correct:\n"
+                    f"  {exe_path}\n\n"
+                    f"Alternatively, switch to \"Open in browser\" mode.")
+                return
+            # Poll for up to 10 seconds for the app window to appear
+            t0 = time.time()
+            while time.time() - t0 < 10.0:
+                if focus_exe_window(ai_tool):
+                    already_open = True
+                    break
+                time.sleep(0.5)
+            print(f"[pricecheck] after launch+poll, already_open={already_open}")
             if not already_open:
-                try:
-                    os.startfile(exe_path)
-                    # Poll for up to 10 seconds for the app window to appear
-                    t0 = time.time()
-                    while time.time() - t0 < 10.0:
-                        if focus_exe_window(ai_tool):
-                            already_open = True
-                            break
-                        time.sleep(0.5)
-                    print(f"[pricecheck] after launch+poll, already_open={already_open}")
-                    if not already_open:
-                        on_result(False,
-                            f"Desktop app mode is selected for {ai_tool.title()}, "
-                            f"but the desktop app window could not be focused.\n\n"
-                            f"Please make sure the AI desktop app is running and visible, "
-                            f"or switch to \"Open in browser\" mode.")
-                        return
-                except Exception:
-                    on_result(False,
-                        f"Desktop app mode is selected for {ai_tool.title()}, "
-                        f"but the desktop app could not be launched.\n\n"
-                        f"Please double-check that your {ai_tool.title()} desktop app "
-                        f"is installed and that the exe path is correct:\n"
-                        f"  {exe_path}\n\n"
-                        f"Alternatively, switch to \"Open in browser\" mode.")
-                    return
+                on_result(False,
+                    f"Desktop app mode is selected for {ai_tool.title()}, "
+                    f"but the desktop app window could not be focused.\n\n"
+                    f"Please make sure the AI desktop app is running and visible, "
+                    f"or switch to \"Open in browser\" mode.")
+                return
         else:
             # Try to focus an already-open AI tool tab (title match).
             # This handles the case where the AI tool is the active browser tab.

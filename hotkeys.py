@@ -482,7 +482,16 @@ def focus_exe_window(ai_tool=None, timeout=3.0):
     for _attempt in range(2):
         hwnd = _find_matching_window(user32, hints, current_pid)
         if hwnd:
-            print(f"[focus_exe_window] Found window hwnd={hwnd} for {ai_tool!r}")
+            # Skip Windows Explorer / folder windows - we want the actual
+            # AI desktop app, not an Explorer window showing its folder.
+            cls_buf = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(hwnd, cls_buf, 256)
+            win_class = cls_buf.value.lower()
+            if win_class in ("cabinetwclass", "explorewclass", "progman", "shelldll_defview"):
+                print(f"[focus_exe_window] Skipping folder/Explorer window class={win_class} for {ai_tool!r}")
+                time.sleep(0.3)
+                continue
+            print(f"[focus_exe_window] Found app window hwnd={hwnd} class={win_class} for {ai_tool!r}")
             # Restore if minimized - keeps window on the same monitor
             if user32.IsIconic(hwnd):
                 user32.ShowWindow(hwnd, 9)  # SW_RESTORE
