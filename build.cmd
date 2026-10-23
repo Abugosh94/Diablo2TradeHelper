@@ -32,7 +32,7 @@ if exist "%APP_NAME%.spec" del /q "%APP_NAME%.spec"
 rem --- Build --------------------------------------------------
 echo [build] Running PyInstaller...
 %PYINSTALLER% ^
-  --noconfirm --clean --onedir --noconsole ^
+  --noconfirm --clean --onefile --noconsole ^
   --upx-dir "%UPX_DIR%" ^
   --icon "%ICON%" ^
   --name "%APP_NAME%" ^
