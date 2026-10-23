@@ -16,20 +16,16 @@ import sys
 import threading
 import time
 
-# --- IMPORT ORDER --------------------------------------------------------------
-# torch is preloaded before tkinter/pynput/pystray imports: on this machine
-# loading torch AFTER those (or after WinRT OCR, historically) failed with
-# WinError 1114 ("c10.dll initialization routine failed") and crashed every
-# F9 quick-list attempt. Verified by test_import_order.py.
-print("[startup] preloading torch (tooltip detector backend)...")
+# Close PyInstaller splash screen as soon as Python starts so it doesn't
+# linger over the app window.
 try:
-    import torch  # noqa: F401 - pulls in c10.dll / torch_cpu.dll early
-    print(f"[startup] torch {torch.__version__} ready")
-except Exception as _e:
-    print(f"[startup] WARNING: torch preload failed: {_e}")
-    print("[startup] quick-list will use the legacy detector")
+    import pyi_splash  # type: ignore
+    pyi_splash.close()
+except Exception:
+    pass
 
-import cv2
+# torch and cv2 are imported lazily (background warmup thread + capture.py)
+# so the GUI window appears immediately instead of waiting for heavy DLLs.
 
 from config import load_config, get_trading_url
 from hotkeys import HotkeyManager, copy_image_to_clipboard
@@ -90,6 +86,7 @@ class App:
                 print(f"[list] Tooltip detected with confidence: {best_conf:.2f}")
 
                 # 3. Copy to clipboard (PNG + DIB, sized for trade sites)
+                import cv2
                 from PIL import Image
                 pil_img = Image.fromarray(cv2.cvtColor(best_crop, cv2.COLOR_BGR2RGB))
                 copied = copy_image_to_clipboard(pil_img)
@@ -171,6 +168,8 @@ def main():
     # Warm the tooltip model in the background so the first F9 is instant.
     def _warm_tooltip_model():
         try:
+            import torch  # noqa: F401 - preload c10.dll/torch_cpu.dll early
+            print(f"[startup] torch {torch.__version__} ready")
             from capture import get_tooltip_model
             m = get_tooltip_model()
             print("[startup] tooltip model ready" if m

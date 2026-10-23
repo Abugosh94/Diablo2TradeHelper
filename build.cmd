@@ -34,6 +34,7 @@ echo [build] Running PyInstaller...
 %PYINSTALLER% ^
   --noconfirm --clean --onefile --noconsole ^
   --upx-dir "%UPX_DIR%" ^
+  --splash "Logo.png" ^
   --icon "%ICON%" ^
   --name "%APP_NAME%" ^
   %DATA_FILES% ^

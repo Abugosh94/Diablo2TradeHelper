@@ -18,7 +18,6 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlparse
 
-import cv2
 import webbrowser
 
 from PIL import Image
@@ -131,6 +130,7 @@ def capture_tooltip():
     failure. The returned image is a PIL RGB image.
     """
     from capture import capture_tooltip_yolo, game_window_found, last_yolo_capture
+    import cv2
 
     if not game_window_found():
         return None, "Diablo II window not found - open the game first."

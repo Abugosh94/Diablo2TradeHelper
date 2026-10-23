@@ -10,15 +10,8 @@ import threading
 
 
 
-try:
-
-    import torch  # noqa: F401
-
-except Exception as _e:
-
-    print(f"[startup] WARNING: torch preload failed: {_e}")
-
-
+# torch is imported lazily via the background warmup thread in main.py
+# so the GUI window appears immediately instead of waiting for heavy DLLs.
 
 import customtkinter as ctk
 
