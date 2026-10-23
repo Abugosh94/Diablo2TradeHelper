@@ -33,7 +33,7 @@ except Exception as _e:
             print("[startup] splash closed via timer", flush=True)
         except Exception:
             pass
-    _splash_timer = threading.Timer(3.0, _close_splash)
+    _splash_timer = threading.Timer(1.0, _close_splash)
     _splash_timer.daemon = True
     _splash_timer.start()
 
