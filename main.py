@@ -16,11 +16,14 @@ import sys
 import threading
 import time
 
-# Close PyInstaller splash screen as soon as Python starts so it doesn't
-# linger over the app window.
+# PyInstaller splash screen: dismiss automatically after 3 seconds.
+# The bootloader shows this before Python starts; we close it from Python
+# via a background timer so it doesn't block the user if they switch apps.
 try:
     import pyi_splash  # type: ignore
-    pyi_splash.close()
+    _splash_timer = threading.Timer(3.0, pyi_splash.close)
+    _splash_timer.daemon = True
+    _splash_timer.start()
 except Exception:
     pass
 
