@@ -16,16 +16,26 @@ import sys
 import threading
 import time
 
-# PyInstaller splash screen: dismiss automatically after 3 seconds.
-# The bootloader shows this before Python starts; we close it from Python
-# via a background timer so it doesn't block the user if they switch apps.
+# PyInstaller splash screen: dismiss after 3 seconds.
+# The bootloader shows this before Python starts; we close it from Python.
+# Try immediate close first (works in most cases), with a timer backup.
 try:
     import pyi_splash  # type: ignore
-    _splash_timer = threading.Timer(3.0, pyi_splash.close)
+    pyi_splash.close()  # immediate close
+    print("[startup] splash closed immediately", flush=True)
+except Exception as _e:
+    print(f"[startup] pyi_splash not available or close failed: {_e}", flush=True)
+    # Fallback: timer-based close as backup
+    def _close_splash():
+        try:
+            import pyi_splash  # type: ignore
+            pyi_splash.close()
+            print("[startup] splash closed via timer", flush=True)
+        except Exception:
+            pass
+    _splash_timer = threading.Timer(3.0, _close_splash)
     _splash_timer.daemon = True
     _splash_timer.start()
-except Exception:
-    pass
 
 # torch and cv2 are imported lazily (background warmup thread + capture.py)
 # so the GUI window appears immediately instead of waiting for heavy DLLs.
