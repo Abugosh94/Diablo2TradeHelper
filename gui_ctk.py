@@ -110,6 +110,7 @@ _ERROR_MESSAGE_MAP = {
     "API key is required": "API request timed out. Please check your connection or API key.",
     "timed out": "API request timed out. Please check your connection or API key.",
     "connection": "API request timed out. Please check your connection or API key.",
+    "cancelled": "Cancelled by user",
     "model": "Model error: Invalid response format. Please try a different model.",
     "Invalid response format": "Model error: Invalid response format. Please try a different model.",
     "Empty response from API": "Empty response from API. Please try again.",
@@ -214,6 +215,11 @@ class CropDialog(ctk.CTkToplevel):
     def __init__(self, master, img_bgr, title, on_done):
 
         super().__init__(master)
+
+        try:
+            self.iconbitmap(resource_path("Logo.ico"))
+        except Exception:
+            pass
 
         self.title(title or "Select the area to post")
 
@@ -636,6 +642,11 @@ class App:
         # Status message cycling during price check (to show user app is working)
         self._status_cycle_after_id = None
 
+        # Pending flag: set when _on_pc_fetch_models runs before the stop
+        # button exists (e.g. during init auto-fetch), so we can enable it
+        # once the button is created.
+        self._pc_fetch_btn_enable_pending = False
+
         self._build_ui()
 
         self._start_hotkeys()
@@ -921,6 +932,37 @@ class App:
 
         self.pc_api_clear_btn.grid(row=0, column=4, padx=(6, 0))
 
+        # Stop button for cancelling an in-progress model fetch
+        self.pc_api_stop_btn = ctk.CTkButton(
+            self.pc_api_key_frame,
+            text="Stop",
+            width=70,
+            command=self._on_pc_api_stop,
+            fg_color=("#DC2626", "#DC2626"),
+            hover_color=("#EF4444", "#EF4444"),
+            text_color=("#FFFFFF", "#FFFFFF"),
+            state="disabled",
+        )
+        self.pc_api_stop_btn.grid(row=1, column=3, columnspan=2, padx=(6, 0), pady=(6, 0))
+
+        # If a fetch was initiated before this button existed (e.g. during init),
+        # enable it now.
+        if self._pc_fetch_btn_enable_pending:
+            try:
+                self.pc_api_stop_btn.configure(state="normal")
+            except Exception:
+                pass
+            self._pc_fetch_btn_enable_pending = False
+
+        # Price check status variable - used internally for status tracking.
+        # Status messages are only displayed in the AI response panel (not as a
+        # separate on-screen label outside the panel).
+        self.pc_status_var = ctk.StringVar(
+            value="Idle. Capture a tooltip and click Price Check."
+        )
+        self.pc_status_dot_count = 0  # Tracks animated dot count (0-3)
+        self.pc_status_recent_msgs = []  # Last 10 messages shown, to prevent repeats
+
         # API base URL override (for Gemini, DeepSeek, and other OpenAI-compatible APIs)
         # Placed INSIDE the API key frame so it appears directly under the API key entry
         self.pc_api_base_url_frame = ctk.CTkFrame(
@@ -1016,14 +1058,6 @@ class App:
         # ---- AI launch mode: browser vs desktop app (exe) ----
         self.pc_ai_launch_var = ctk.StringVar(value="browser")
         self.pc_ai_exe_path_var = ctk.StringVar(value="")
-
-        self.pc_status_var = ctk.StringVar(
-
-            value="Idle. Capture a tooltip and click Price Check."
-
-        )
-        self.pc_status_dot_count = 0  # Tracks animated dot count (0-3)
-        self.pc_status_recent_msgs = []  # Last 10 messages shown, to prevent repeats
 
         # AI Response slide-out panel state
 
@@ -1189,6 +1223,7 @@ class App:
 
         # Track whether the Continue same chat popup has been shown (only show once on selection)
         self._continue_same_chat_popup_shown = False
+        self._price_check_cancelled = False
 
 
         self.pc_new_chat_label = ctk.CTkLabel(self.pc_mode_frame, text="New chat behavior:", text_color=("#18181B", "#F4F4F5"))
@@ -1967,6 +2002,10 @@ class App:
 
     def _minimize_to_tray(self):
 
+        # Hide the AI panel before minimizing to tray
+        if hasattr(self, "ai_panel") and self.ai_panel and self.ai_panel.winfo_exists():
+            self.ai_panel.withdraw()
+
         if pystray is None or Image is None:
 
             self._set_status("Tray icon unavailable (pystray/Pillow not in exe); minimizing to taskbar instead.")
@@ -2022,6 +2061,20 @@ class App:
     def _show_from_tray(self, icon=None, item=None):
 
         self.root.after(0, lambda: self.root.deiconify())
+
+        # Restore the AI panel if it was visible before minimizing
+        self.root.after(100, self._restore_ai_panel_from_tray)
+
+    def _restore_ai_panel_from_tray(self):
+        """Restore the AI panel after deiconifying from tray."""
+        if not hasattr(self, "ai_panel") or not self.ai_panel or not self.ai_panel.winfo_exists():
+            return
+        if self.pc_mode_var.get() != "api":
+            return
+        if self.ai_locked:
+            self._apply_ai_panel_layout(expanded=self.ai_panel_expanded)
+        self.ai_panel.deiconify()
+        self.ai_panel.lift()
 
 
 
@@ -2215,7 +2268,9 @@ class App:
 
     def _on_pc_fetch_models(self):
 
-        import urllib.request, urllib.error, json
+        import http.client
+        import json
+        from urllib.parse import urlparse
 
         # Only fetch models in API mode (any AI tool can have a model field)
 
@@ -2234,6 +2289,17 @@ class App:
         self.pc_status_var.set("Fetching models...")
 
         self.root.update_idletasks()
+
+        # Enable stop button and reset stop flag + connection ref
+        self._pc_fetch_stop = False
+        self._pc_fetch_conn = None
+        if hasattr(self, "pc_api_stop_btn") and self.pc_api_stop_btn:
+            try:
+                self.pc_api_stop_btn.configure(state="normal")
+            except Exception:
+                pass
+        else:
+            self._pc_fetch_btn_enable_pending = True
 
         def _fetch():
 
@@ -2301,11 +2367,48 @@ class App:
 
             try:
 
-                req = urllib.request.Request(url, headers=headers)
+                # Check if user requested stop before making the request
+                if self._pc_fetch_stop:
+                    self.root.after(0, lambda: self._on_models_fetched([], "Cancelled by user"))
+                    return
 
-                with urllib.request.urlopen(req, timeout=15) as resp:
+                # Parse URL for http.client
+                parsed = urlparse(url)
+                is_https = parsed.scheme == "https"
+                host = parsed.hostname
+                port = parsed.port or (443 if is_https else 80)
+                path = parsed.path
+                if parsed.query:
+                    path += "?" + parsed.query
 
-                    data = json.loads(resp.read().decode("utf-8"))
+                # Use http.client so we can close the connection from another thread
+                if is_https:
+                    conn = http.client.HTTPSConnection(host, port, timeout=15)
+                else:
+                    conn = http.client.HTTPConnection(host, port, timeout=15)
+
+                self._pc_fetch_conn = conn
+
+                # Check stop again before sending request
+                if self._pc_fetch_stop:
+                    conn.close()
+                    self._pc_fetch_conn = None
+                    self.root.after(0, lambda: self._on_models_fetched([], "Cancelled by user"))
+                    return
+
+                conn.request("GET", path, headers=headers)
+                resp = conn.getresponse()
+
+                # Check stop after getting response headers
+                if self._pc_fetch_stop:
+                    conn.close()
+                    self._pc_fetch_conn = None
+                    self.root.after(0, lambda: self._on_models_fetched([], "Cancelled by user"))
+                    return
+
+                data = json.loads(resp.read().decode("utf-8"))
+                conn.close()
+                self._pc_fetch_conn = None
 
                 models = parse(data)
 
@@ -2321,15 +2424,17 @@ class App:
 
                 self.root.after(0, lambda: self._on_models_fetched(models, None))
 
-            except urllib.error.HTTPError as e:
+            except http.client.HTTPException as e:
 
-                body = e.read().decode("utf-8")
-
-                self.root.after(0, lambda _e=e, _body=body: self._on_models_fetched([], f"HTTP {_e.code}: {_body[:120]}"))
+                self.root.after(0, lambda _e=e: self._on_models_fetched([], str(_e)))
 
             except Exception as e:
 
-                self.root.after(0, lambda _e=e: self._on_models_fetched([], str(_e)))
+                # If stop was pressed, treat as cancellation not an error
+                if self._pc_fetch_stop:
+                    self.root.after(0, lambda: self._on_models_fetched([], "Cancelled by user"))
+                else:
+                    self.root.after(0, lambda _e=e: self._on_models_fetched([], str(_e)))
 
         import threading
 
@@ -2339,7 +2444,48 @@ class App:
 
         self.fetch_thread = t
 
+    def _on_pc_api_stop(self):
+        """Cancel an in-progress model fetch or price check API call.
+
+        Closes the HTTP connection for either the model fetch (fetch_models)
+        or the price check API call, causing the blocked request/read in
+        the fetch thread to raise an exception.
+        """
+        self._pc_fetch_stop = True
+        self.price_checker._price_check_stop = True
+        self._price_check_cancelled = True
+        self.pc_status_var.set("Cancelled by user")
+        # Also push the cancellation message into the AI response side panel
+        # immediately, so the user sees it there without waiting for the
+        # background thread to finish and invoke _pc_on_result.
+        self._show_ai_response("Cancelled by user")
+        if hasattr(self, "pc_api_stop_btn") and self.pc_api_stop_btn:
+            try:
+                self.pc_api_stop_btn.configure(state="disabled")
+            except Exception:
+                pass
+        # Stop the status message rotation immediately so it doesn't
+        # keep cycling while we wait for the API call to fail.
+        self._stop_status_cycle()
+        # Close model fetch connection if open
+        conn = getattr(self, "_pc_fetch_conn", None)
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            self._pc_fetch_conn = None
+        # Close price check connection if open
+        self.price_checker.stop()
+
     def _on_models_fetched(self, models, error):
+
+        # Disable stop button when fetch completes (success or failure)
+        if hasattr(self, "pc_api_stop_btn") and self.pc_api_stop_btn:
+            try:
+                self.pc_api_stop_btn.configure(state="disabled")
+            except Exception:
+                pass
 
         if error:
 
@@ -2822,6 +2968,15 @@ class App:
 
 
 
+        # Enable stop button for price check cancellation
+        self.price_checker._price_check_stop = False
+        self.price_checker._price_check_conn = None
+        if hasattr(self, "pc_api_stop_btn") and self.pc_api_stop_btn:
+            try:
+                self.pc_api_stop_btn.configure(state="normal")
+            except Exception:
+                pass
+
         variables = {
 
             "PLATFORM": pc_cfg["platform"],
@@ -2952,6 +3107,23 @@ class App:
 
     def _pc_on_result(self, success, message):
 
+        # Disable stop button when price check completes
+        if hasattr(self, "pc_api_stop_btn") and self.pc_api_stop_btn:
+            try:
+                self.pc_api_stop_btn.configure(state="disabled")
+            except Exception:
+                pass
+
+        # If the user cancelled, show "Cancelled by user" regardless of
+        # what the background thread may return (it may complete late).
+        if getattr(self, "_price_check_cancelled", False):
+            self._price_check_cancelled = False
+            self._stop_status_cycle()
+            self.pc_status_dot_count = 0
+            self.pc_status_var.set("Cancelled by user")
+            self._show_ai_response("Cancelled by user")
+            return
+
         # Stop cycling the status message now that the request is done
         # (only relevant in API mode where the cycle was started).
         if self.pc_mode_var.get() == "api":
@@ -3006,6 +3178,11 @@ class App:
         window's movement via the <Configure> binding so it glides alongside
         instantly with zero drag lag.
         """
+        # Guard: don't create a second panel if one already exists
+        # (called from both __init__ and _on_pc_mode_changed during init)
+        if hasattr(self, "ai_panel") and self.ai_panel is not None and self.ai_panel.winfo_exists():
+            return
+
         self.ai_locked = True
 
         self.ai_panel = ctk.CTkToplevel(self.root)
@@ -3102,7 +3279,8 @@ class App:
         self.ai_bottom_btn_bar.pack(fill="x", padx=5, pady=(0, 5))
         self.ai_bottom_btn_bar.pack_propagate(False)
 
-        self.ai_export_btn = ctk.CTkButton(
+        # Export button in bottom bar (Side mode)
+        self.ai_export_btn_bottom = ctk.CTkButton(
             self.ai_bottom_btn_bar,
             text="Export",
             width=70,
@@ -3110,7 +3288,45 @@ class App:
             fg_color=("#3B82F6", "#3B82F6"),
             hover_color=("#60A5FA", "#60A5FA"),
         )
-        self.ai_export_btn.pack(side="right", padx=5, pady=5)
+
+        # Export button in title bar (Bottom mode)
+        self.ai_export_btn_top = ctk.CTkButton(
+            self.ai_title_bar,
+            text="Export",
+            width=70,
+            command=self._export_ai_response,
+            fg_color=("#3B82F6", "#3B82F6"),
+            hover_color=("#60A5FA", "#60A5FA"),
+        )
+
+        # Show only the button for the current mode
+        self._relocate_export_button()
+
+    def _relocate_export_button(self):
+        """Show the Export button in title bar (Bottom mode) or
+        bottom button bar (Side mode) based on the current panel mode."""
+        # Hide both buttons first
+        self.ai_export_btn_bottom.pack_forget()
+        self.ai_export_btn_top.pack_forget()
+        if self.ai_panel_mode == "side":
+            # Side mode: export button at bottom bar
+            self.ai_export_btn_bottom.pack(
+                side="right", padx=5, pady=5
+            )
+        else:
+            # Bottom mode: export button at top title bar.
+            # Repack title bar widgets so the export button sits on the same
+            # row as the right-aligned buttons.
+            self.ai_toggle_btn.pack_forget()
+            self.ai_undock_btn.pack_forget()
+            self.ai_mode_btn.pack_forget()
+            self.ai_title_label.pack_forget()
+
+            self.ai_toggle_btn.pack(side="left", padx=5, pady=5)
+            self.ai_undock_btn.pack(side="right", padx=5, pady=5)
+            self.ai_mode_btn.pack(side="right", padx=5, pady=5)
+            self.ai_export_btn_top.pack(side="right", padx=5, pady=5)
+            self.ai_title_label.pack(side="top", padx=5, pady=2)
 
     def _compute_ai_panel_geometry(self, expanded):
         """Compute the geometry string for the AI panel based on user-selected mode.
@@ -3191,17 +3407,45 @@ class App:
             self._show_ai_panel()
 
     def _toggle_ai_panel_mode(self):
-        """Switch the AI panel between Side and Bottom drawer mode (user choice)."""
+        """Switch the AI panel between Side and Bottom drawer mode (user choice)."
+
+        Side mode is not offered while maximized (the panel would sit off-screen
+        at the right edge), so the button is hidden in that state.
+        """
         if self.ai_panel_mode == "side":
             self.ai_panel_mode = "bottom"
-            self.ai_mode_btn.configure(text="⇄ Side")
+            self.ai_mode_btn.configure(text="⇄ Bottom")
         else:
             self.ai_panel_mode = "side"
-            self.ai_mode_btn.configure(text="⇄ Bottom")
+            self.ai_mode_btn.configure(text="⇄ Side")
+
+        # Move export button: bottom bar in Side mode, title bar in Bottom mode
+        self._relocate_export_button()
 
         # Re-apply layout immediately so the panel snaps to the new position
         if self.ai_locked and self.ai_panel and self.ai_panel.winfo_exists():
             self._apply_ai_panel_layout(expanded=self.ai_panel_expanded)
+
+    def _update_ai_mode_button_visibility(self):
+        """Hide the Side/Bottom mode toggle when maximized (side mode is
+        not usable while maximized - the panel would be off-screen).
+        Show it again when restored to normal size."""
+        if not hasattr(self, "ai_mode_btn"):
+            return
+        is_maximized = self.root.state() == "zoomed"
+        if is_maximized:
+            self.ai_mode_btn.pack_forget()
+        else:
+            # Repack title bar widgets in correct order
+            self.ai_toggle_btn.pack_forget()
+            self.ai_undock_btn.pack_forget()
+            self.ai_mode_btn.pack_forget()
+            self.ai_title_label.pack_forget()
+
+            self.ai_toggle_btn.pack(side="left", padx=5, pady=5)
+            self.ai_undock_btn.pack(side="right", padx=5, pady=5)
+            self.ai_mode_btn.pack(side="right", padx=5, pady=5)
+            self.ai_title_label.pack(side="top", padx=5, pady=2)
 
     def _show_ai_panel(self):
         """Show the AI response panel (expanded) with responsive side/bottom layout."""
@@ -3251,11 +3495,28 @@ class App:
 
         self.ai_panel_expanded = True
 
-        # Apply side layout while still locked — _compute_ai_panel_geometry
-        # returns None when ai_locked is False, so we must set geometry before
-        # unlocking.
+        # Apply side layout while still locked. Always use side geometry for
+        # undocked windows (ignore maximized snap-to-bottom), since an
+        # undocked floating panel must be side-sized (fixed width, ~90% height).
+        # When maximized, root_x + root_w would place the panel off-screen
+        # to the right, so offset from top-left instead so it's visible.
         if self.ai_panel and self.ai_panel.winfo_exists():
-            self._apply_ai_panel_layout(expanded=True)
+            root_x = self.root.winfo_rootx()
+            root_y = self.root.winfo_rooty()
+            root_w = self.root.winfo_width()
+            root_h = self.root.winfo_height()
+            w = self.ai_panel_width
+            h = int(root_h * 0.90)
+            if self.root.state() == "zoomed":
+                x = root_x + 50   # visible offset when maximized
+                y = root_y + 50
+            else:
+                x = root_x + root_w
+                y = root_y + int(root_h * 0.05)
+            geom = f"{w}x{h}+{x}+{y}"
+            self.ai_panel.deiconify()
+            self.ai_panel.geometry(geom)
+            self.ai_panel.lift()
 
         # Now unlock: re-enable standard window framing (title bar) so the
         # window can be dragged freely.
@@ -3319,6 +3580,9 @@ class App:
         self.ai_toggle_btn.configure(command=self._toggle_ai_panel, text="←")
         self.ai_undock_btn.configure(command=self._undock_ai_panel)
 
+        # Hide the Side/Bottom mode button if maximized (side mode unusable)
+        self._update_ai_mode_button_visibility()
+
         # Show panel with restored layout
         self.ai_panel.deiconify()
         self.ai_panel.lift()
@@ -3348,17 +3612,12 @@ class App:
             )
             return
 
-        # Ask user to choose format: Yes = Image (PNG), No = PDF
-        choice = self._show_topmost_messagebox(
-            "askquestion",
-            "Export AI Response",
-            "Export as Image (PNG)?\n\n"
-            "Click 'Yes' for Image, 'No' for PDF.",
-        )
-        if choice == "cancel" or choice == "":
+        # Ask user to choose format with a custom dialog (PDF / Image buttons)
+        result = self._show_export_format_dialog()
+        if result is None:
             return
 
-        is_image = choice == "yes"
+        is_image = result == "image"
 
         # Determine results folder: <app_dir>/Results/<PDF|Image>/
         results_dir = os.path.join(app_dir(), "Results")
@@ -3384,6 +3643,94 @@ class App:
             "Export Complete",
             f"AI response exported to:\n{filepath}",
         )
+
+    def _show_export_format_dialog(self):
+        """Show a custom modal dialog with PDF and Image buttons.
+
+        Returns "pdf", "image", or None if cancelled.
+        """
+        import customtkinter as ctk
+
+        dialog = ctk.CTkToplevel(self.root)
+        try:
+            dialog.iconbitmap(resource_path("Logo.ico"))
+        except Exception:
+            pass
+        dialog.title("Export AI Response")
+        dialog.geometry("350x180")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Center on parent
+        dialog.update_idletasks()
+        root_x = self.root.winfo_rootx()
+        root_y = self.root.winfo_rooty()
+        root_w = self.root.winfo_width()
+        root_h = self.root.winfo_height()
+        d_w = 350
+        d_h = 180
+        x = root_x + (root_w - d_w) // 2
+        y = root_y + (root_h - d_h) // 2
+        dialog.geometry(f"{d_w}x{d_h}+{x}+{y}")
+
+        result = {"value": None}
+
+        label = ctk.CTkLabel(
+            dialog,
+            text="Export AI Response as:",
+            font=("Segoe UI", 14, "bold"),
+        )
+        label.pack(pady=(25, 20))
+
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(pady=10)
+
+        def choose_pdf():
+            result["value"] = "pdf"
+            dialog.destroy()
+
+        def choose_image():
+            result["value"] = "image"
+            dialog.destroy()
+
+        def on_cancel():
+            result["value"] = None
+            dialog.destroy()
+
+        pdf_btn = ctk.CTkButton(
+            btn_frame,
+            text="PDF",
+            width=100,
+            command=choose_pdf,
+            fg_color=("#3B82F6", "#3B82F6"),
+            hover_color=("#60A5FA", "#60A5FA"),
+        )
+        pdf_btn.pack(side="left", padx=10)
+
+        image_btn = ctk.CTkButton(
+            btn_frame,
+            text="Image",
+            width=100,
+            command=choose_image,
+            fg_color=("#10B981", "#10B981"),
+            hover_color=("#34D399", "#34D399"),
+        )
+        image_btn.pack(side="left", padx=10)
+
+        cancel_btn = ctk.CTkButton(
+            dialog,
+            text="Cancel",
+            width=100,
+            command=on_cancel,
+            fg_color=("#6B7280", "#6B7280"),
+            hover_color=("#9CA3AF", "#9CA3AF"),
+        )
+        cancel_btn.pack(pady=(20, 10))
+
+        # Make dialog modal
+        dialog.wait_window()
+        return result["value"]
 
     def _show_topmost_messagebox(self, kind, title, message):
         """Show a messagebox parented to the AI panel so it appears on top.
@@ -3458,6 +3805,22 @@ class App:
 
         img.save(filepath, "PNG")
 
+    def _wrap_text(self, text, max_chars):
+        """Wrap text so no line exceeds max_chars characters."""
+        if max_chars <= 0:
+            return text
+        wrapped = []
+        for line in text.split("\n"):
+            if len(line) <= max_chars:
+                wrapped.append(line)
+                continue
+            # Hard-wrap long lines
+            while len(line) > max_chars:
+                wrapped.append(line[:max_chars])
+                line = line[max_chars:]
+            wrapped.append(line)
+        return wrapped
+
     def _export_as_pdf(self, text, filepath):
         """Export text as a PDF file using reportlab if available."""
         try:
@@ -3468,13 +3831,18 @@ class App:
             width, height = letter
             c.setFont("Helvetica", 12)
 
-            y = height - 50
-            for line in text.split("\n"):
-                if y < 50:
+            margin = 50
+            max_width = width - margin * 2  # ~512 pts usable
+            # Approx char width for Helvetica 12pt ~ 6 pts -> ~85 chars per line
+            max_chars = int(max_width / 6.0)
+
+            y = height - margin
+            for line in self._wrap_text(text, max_chars):
+                if y < margin:
                     c.showPage()
                     c.setFont("Helvetica", 12)
-                    y = height - 50
-                c.drawString(50, y, line)
+                    y = height - margin
+                c.drawString(margin, y, line)
                 y -= 14
 
             c.save()
@@ -3484,32 +3852,6 @@ class App:
 
     def _export_as_pdf_fallback(self, text, filepath):
         """Create a minimal PDF file without external dependencies."""
-        # Escape special characters for PDF strings
-        def pdf_escape(s):
-            s = s.replace("\\", "\\\\")
-            s = s.replace("(", "\\(")
-            s = s.replace(")", "\\)")
-            return s
-
-        lines = text.split("\n")
-        # Build content stream
-        content_lines = []
-        y = 742  # Start near top of letter page (792 pts)
-        content_lines.append("BT /F1 12 Tf 50 742 Td")
-        for line in lines:
-            if y < 50:
-                content_lines.append("ET")
-                content_lines.append("showpage")
-                content_lines.append("BT /F1 12 Tf 50 742 Td")
-                y = 742
-            escaped = pdf_escape(line)
-            content_lines.append(f"({escaped}) Tj 0 -14 Td")
-            y -= 14
-        content_lines.append("ET")
-        content_stream = "\n".join(content_lines)
-
-    def _export_as_pdf_fallback(self, text, filepath):
-        """Create a minimal PDF file without external dependencies."""
 
         def pdf_escape(s):
             s = s.replace("\\", "\\\\")
@@ -3517,7 +3859,9 @@ class App:
             s = s.replace(")", "\\)")
             return s
 
-        lines = text.split("\n")
+        # Wrap text to fit within page width (approx 80 chars per line at 12pt Courier)
+        max_chars = 80
+        lines = self._wrap_text(text, max_chars)
 
         # Build content stream
         content_parts = []
@@ -3631,6 +3975,7 @@ class App:
             return
         if event.widget is self.root:
             self._apply_ai_panel_layout(expanded=self.ai_panel_expanded)
+            self._update_ai_mode_button_visibility()
 
     def _refresh_site_combo(self):
 
@@ -4413,6 +4758,10 @@ class App:
 
     def _minimize_to_tray(self):
 
+        # Hide the AI panel before minimizing to tray
+        if hasattr(self, "ai_panel") and self.ai_panel and self.ai_panel.winfo_exists():
+            self.ai_panel.withdraw()
+
         if pystray is None or Image is None:
 
             self._set_status("Tray icon unavailable (pystray/Pillow not in exe); minimizing to taskbar instead.")
@@ -4468,6 +4817,20 @@ class App:
     def _show_from_tray(self, icon=None, item=None):
 
         self.root.after(0, lambda: self.root.deiconify())
+
+        # Restore the AI panel if it was visible before minimizing
+        self.root.after(100, self._restore_ai_panel_from_tray)
+
+    def _restore_ai_panel_from_tray(self):
+        """Restore the AI panel after deiconifying from tray."""
+        if not hasattr(self, "ai_panel") or not self.ai_panel or not self.ai_panel.winfo_exists():
+            return
+        if self.pc_mode_var.get() != "api":
+            return
+        if self.ai_locked:
+            self._apply_ai_panel_layout(expanded=self.ai_panel_expanded)
+        self.ai_panel.deiconify()
+        self.ai_panel.lift()
 
 
 

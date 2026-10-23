@@ -8,6 +8,7 @@ variables ({ladder_status}, {hardcore_status}, {platform},
 in the Price Check tab.
 """
 import base64
+import http.client
 import io
 import json
 import os
@@ -15,6 +16,7 @@ import sys
 import threading
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 
 import cv2
 import webbrowser
@@ -164,6 +166,10 @@ class PriceChecker:
         pc.setdefault("custom_ai_tools", [])
         pc.setdefault("new_chat_each_time", True)
 
+        # Price check cancellation support
+        self._price_check_stop = False
+        self._price_check_conn = None
+
     def get_config(self):
         return self.cfg.setdefault("price_check", {})
 
@@ -183,6 +189,22 @@ class PriceChecker:
             args=(mode, ai_tool, api_key, variables, on_result),
             daemon=True,
         ).start()
+
+    def stop(self):
+        """Cancel an in-progress price check API call.
+
+        Sets the stop flag and closes the HTTP connection if one is open,
+        causing the blocked request/read in the fetch thread to raise an
+        exception.
+        """
+        self._price_check_stop = True
+        conn = self._price_check_conn
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            self._price_check_conn = None
 
     # ------------------------------------------------------------------ #
     # Internal
@@ -332,8 +354,14 @@ class PriceChecker:
                 # The user must have the chat window already focused.
                 already_open = focus_exe_window(ai_tool)
                 if not already_open:
-                    # Try browser window using tool hints (page title match)
-                    already_open = focus_browser_window(url, include_tool_hints=True)
+                    # Try browser window using tool hints (page title match).
+                    # Retry a few times in case the window needs a moment to
+                    # become focusable after switching chat modes.
+                    for _attempt in range(3):
+                        already_open = focus_browser_window(url, include_tool_hints=True)
+                        if already_open:
+                            break
+                        time.sleep(0.5)
                 if already_open:
                     pass  # Popup already shown when dropdown was changed to "Continue same chat"
                 else:
@@ -363,9 +391,18 @@ class PriceChecker:
         else:
             # No existing AI tool window found - open a new browser tab
             webbrowser.open(url)
-            # Give the browser a moment to open the new tab, then focus it
+            # Give the browser a moment to open the new tab, then focus it.
+            # Retry focusing in case the browser needs more time to create the
+            # tab and update its window title - especially on the first price
+            # check after switching between "Continue same chat" and
+            # "New chat each time".
             time.sleep(2.0)
-            focused = focus_browser_window(url)
+            focused = False
+            for _attempt in range(5):
+                focused = focus_browser_window(url, include_tool_hints=True)
+                if focused:
+                    break
+                time.sleep(1.0)
             if focused:
                 time.sleep(0.3)
             # New tab opens on the homepage - paste into the current chat
@@ -677,9 +714,9 @@ class PriceChecker:
                             "inline_data": {
                                 "mime_type": "image/png",
                                 "data": img_b64,
-                            }
+                            },
                         },
-                    ]
+                    ],
                 }
             ]
         }
@@ -689,25 +726,63 @@ class PriceChecker:
             return False, "Model error: Invalid response format. Please try a different model."
 
         def _try_call(model_name):
+            # Check stop before making the request
+            if self._price_check_stop:
+                return None, "Cancelled by user"
+
             url = (
                 "https://generativelanguage.googleapis.com/v1/models/"
                 + model_name + ":generateContent?key=" + api_key
             )
-            data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(
-                url, data=data, headers={"Content-Type": "application/json"}
-            )
+            body = json.dumps(payload).encode("utf-8")
+
+            parsed = urlparse(url)
+            host = parsed.hostname
+            port = parsed.port or 443
+            path = parsed.path
+            if parsed.query:
+                path += "?" + parsed.query
+
+            headers = {"Content-Type": "application/json"}
+
+            conn = http.client.HTTPSConnection(host, port, timeout=60)
+            self._price_check_conn = conn
+
+            # Check stop again after creating connection
+            if self._price_check_stop:
+                conn.close()
+                self._price_check_conn = None
+                return None, "Cancelled by user"
+
             try:
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    body = resp.read().decode("utf-8")
-                _log_api("_call_gemini", body)
-            except urllib.error.HTTPError as e:
-                body = e.read().decode("utf-8")
-                _log_api("_call_gemini", body)
-                return e.code, body
-            return None, body
+                conn.request("POST", path, body=body, headers=headers)
+                resp = conn.getresponse()
+
+                # Check stop after getting response headers
+                if self._price_check_stop:
+                    conn.close()
+                    self._price_check_conn = None
+                    return None, "Cancelled by user"
+
+                response_body = resp.read().decode("utf-8")
+                conn.close()
+                self._price_check_conn = None
+
+                _log_api("_call_gemini", response_body)
+                return None, response_body
+            except http.client.HTTPException as e:
+                if self._price_check_stop:
+                    return False, "Cancelled by user"
+                return e.code, ""
+            except Exception as e:
+                if self._price_check_stop:
+                    return False, "Cancelled by user"
+                return None, ""
 
         code, body = _try_call(model)
+
+        if body == "Cancelled by user":
+            return False, "Cancelled by user"
 
         if not body or not body.strip():
             return False, "Empty response from API. Please try again."
@@ -726,6 +801,7 @@ class PriceChecker:
         except (KeyError, IndexError, TypeError):
             _log_api("_call_gemini", body)
             return True, body  # return raw if we can't parse the expected shape
+
 
     def _call_openai_compatible(self, api_key, base_url, log_label, model, prompt, pil_img):
         """Call any OpenAI-compatible chat API (OpenAI, NVIDIA NIM, custom tools).
@@ -752,41 +828,75 @@ class PriceChecker:
             ],
             "max_tokens": 1000,
         }
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            base_url,
-            data=data,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + api_key,
-            },
-        )
+        body = json.dumps(payload).encode("utf-8")
+
+        # Check stop before making the request
+        if self._price_check_stop:
+            return False, "Cancelled by user"
+
+        parsed = urlparse(base_url)
+        is_https = parsed.scheme == "https"
+        host = parsed.hostname
+        port = parsed.port or (443 if is_https else 80)
+        path = parsed.path
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + api_key,
+        }
+
+        # Use http.client so we can close the connection from another thread
+        if is_https:
+            conn = http.client.HTTPSConnection(host, port, timeout=60)
+        else:
+            conn = http.client.HTTPConnection(host, port, timeout=60)
+
+        self._price_check_conn = conn
+
+        # Check stop again after creating the connection
+        if self._price_check_stop:
+            conn.close()
+            self._price_check_conn = None
+            return False, "Cancelled by user"
+
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                body = resp.read().decode("utf-8")
-                if not body or not body.strip():
-                    _log_api(log_label, body)
-                    return False, "Empty response from API. Please try again."
-                _log_api(log_label, body)
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8")
-            if not body or not body.strip():
-                return False, "API request timed out. Please check your connection or API key."
-            _log_api(log_label, body)
+            conn.request("POST", path, body=body, headers=headers)
+            resp = conn.getresponse()
+
+            # Check stop after getting response headers
+            if self._price_check_stop:
+                conn.close()
+                self._price_check_conn = None
+                return False, "Cancelled by user"
+
+            response_body = resp.read().decode("utf-8")
+            conn.close()
+            self._price_check_conn = None
+
+            if not response_body or not response_body.strip():
+                _log_api(log_label, response_body)
+                return False, "Empty response from API. Please try again."
+            _log_api(log_label, response_body)
+        except http.client.HTTPException as e:
+            if self._price_check_stop:
+                return False, "Cancelled by user"
             return False, "API request timed out. Please check your connection or API key."
         except Exception as e:
+            if self._price_check_stop:
+                return False, "Cancelled by user"
             return False, "API request timed out. Please check your connection or API key."
-        result = json.loads(body)
+
+        result = json.loads(response_body)
         try:
             text = result["choices"][0]["message"]["content"]
             if not text or not text.strip():
-                _log_api(log_label, body)
+                _log_api(log_label, response_body)
                 return False, "Empty response from API. Please try again."
-            _log_api(log_label, body)
+            _log_api(log_label, response_body)
             return True, text
         except (KeyError, IndexError, TypeError):
-            _log_api(log_label, body)
-            return True, body
+            _log_api(log_label, response_body)
+            return True, response_body
 
     def _call_openai(self, api_key, prompt, pil_img):
         """Call the OpenAI API using the model selected in the dropdown."""

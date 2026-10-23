@@ -18,7 +18,10 @@ rem --- Data files to bundle (source;dest) ---------------------
 set "DATA_FILES=--add-data "tooltip_best_v6.pt;." --add-data "Logo.ico;." --add-data "Logo.png;." --add-data "Prompt.txt;.""
 
 rem --- Packages that need full collection ---------------------
-set "COLLECT_ALL=--collect-all ultralytics --collect-all torchvision --collect-all pystray --collect-all PIL"
+set "COLLECT_ALL=--collect-all ultralytics --collect-all torchvision --collect-all torch --collect-all pystray --collect-all PIL --collect-all customtkinter --collect-all cv2 --collect-all mss --collect-all pynput"
+
+rem --- Modules to exclude (shrink archive, faster extraction) ---
+set "EXCLUDES=--exclude-module tkinter.test --exclude-module unittest --exclude-module test --exclude-module pydoc --exclude-module email --exclude-module http --exclude-module xmlrpc --exclude-module xml.etree --exclude-module venv --exclude-module ensurepip --exclude-module idlelib"
 
 rem --- Clean previous artifacts -------------------------------
 echo [build] Cleaning previous artifacts...
@@ -29,12 +32,13 @@ if exist "%APP_NAME%.spec" del /q "%APP_NAME%.spec"
 rem --- Build --------------------------------------------------
 echo [build] Running PyInstaller...
 %PYINSTALLER% ^
-  --noconfirm --clean --onefile --noconsole ^
+  --noconfirm --clean --onedir --noconsole ^
   --upx-dir "%UPX_DIR%" ^
   --icon "%ICON%" ^
   --name "%APP_NAME%" ^
   %DATA_FILES% ^
   %COLLECT_ALL% ^
+  %EXCLUDES% ^
   "%ENTRY%"
 
 if %ERRORLEVEL% neq 0 (
