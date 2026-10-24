@@ -8,7 +8,7 @@ cd /d "%~dp0"
 rem --- Configuration ------------------------------------------
 set "ENTRY=main.py"
 set "ICON=Logo.ico"
-set "APP_NAME=D2TradeHelper v0.2"
+set "APP_NAME=D2TradeHelper v0.2.2"
 set "PYINSTALLER=python -m PyInstaller"
 
 rem --- UPX (compression) --------------------------------------

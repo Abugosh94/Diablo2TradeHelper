@@ -64,7 +64,7 @@ from pricecheck import (
 
 APP_TITLE = "D2TradeHelper"
 
-APP_VERSION = "0.2"
+APP_VERSION = "0.2.2"
 
 # Subtle Diablo-flavored status messages shown while a price check is in flight.
 # One is chosen at random each time the user requests a price check.
