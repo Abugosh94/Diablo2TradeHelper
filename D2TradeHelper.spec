@@ -2,7 +2,7 @@
 import os
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('tooltip_best_v6.pt', '.'), ('Logo.ico', '.'), ('Logo.png', '.'), ('Prompt.txt', '.')]
+datas = [('tooltip_best_v6.pt', '.'), ('Logo.ico', '.'), ('Logo.png', '.'), ('Prompt.txt', '.'), ('capture_worker.py', '.')]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('ultralytics')

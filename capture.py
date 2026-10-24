@@ -294,6 +294,27 @@ def unload_tooltip_model():
     print("[yolo] model unloaded - RAM freed for reuse")
 
 
+def _find_worker_path():
+    """Locate capture_worker.py for subprocess mode.
+
+    When running from source, it's next to capture.py.
+    When running as a PyInstaller onefile exe, it's extracted to
+    sys._MEIPASS temp dir (we add it to the .spec datas).
+    """
+    # Source mode: next to capture.py
+    src_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "capture_worker.py")
+    if os.path.exists(src_path):
+        return src_path
+    # PyInstaller onefile: bundled in _MEIPASS
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        exe_path = os.path.join(meipass, "capture_worker.py")
+        if os.path.exists(exe_path):
+            return exe_path
+    return None
+
+
 def capture_tooltip_via_subprocess(conf_thres=0.5):
     """Capture the tooltip using a separate Python process.
 
@@ -308,13 +329,15 @@ def capture_tooltip_via_subprocess(conf_thres=0.5):
     Adds ~2-3 seconds per capture (worker cold start), but idle memory stays
     at baseline forever.
     """
+    worker_path = _find_worker_path()
+    if worker_path is None:
+        print("[capture] capture_worker.py not found - falling back to in-process")
+        return capture_tooltip_yolo(conf_thres)
+
     tmpdir = tempfile.gettempdir()
     ts = int(time.time() * 1000)
     img_path = os.path.join(tmpdir, f"d2_capture_{os.getpid()}_{ts}.png")
     conf_path = img_path + ".conf"
-
-    worker_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "capture_worker.py")
 
     try:
         python_exe = sys.executable
@@ -324,6 +347,11 @@ def capture_tooltip_via_subprocess(conf_thres=0.5):
             text=True,
             timeout=60,
         )
+
+        if result.returncode != 0:
+            print(f"[capture] subprocess exited with code {result.returncode}")
+            if result.stderr:
+                print(f"[capture] stderr: {result.stderr.strip()}")
 
         if os.path.exists(img_path) and os.path.getsize(img_path) > 0:
             img = cv2.imread(img_path)

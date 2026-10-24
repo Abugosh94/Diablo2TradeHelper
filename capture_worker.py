@@ -13,6 +13,13 @@ Exits 1 on unexpected error.
 """
 import sys
 import os
+
+# When running as a PyInstaller onefile subprocess, the bundled modules live
+# in sys._MEIPASS. Add it to sys.path so we can import the capture module.
+_meipass = getattr(sys, "_MEIPASS", None)
+if _meipass and _meipass not in sys.path:
+    sys.path.insert(0, _meipass)
+
 import cv2
 
 
