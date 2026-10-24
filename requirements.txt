@@ -1,0 +1,10 @@
+mss>=9.0.1
+opencv-python>=4.8.0
+Pillow>=10.0.0
+pynput>=1.7.6
+pystray>=0.19.5
+numpy>=1.24.0
+pywin32>=306; sys_platform == "win32"   # win32clipboard/win32api (clipboard posting)
+# NOTE: torch/ultralytics are NOT used by the parent app.
+# Tooltip detection runs ONNX in a subprocess worker (capture_worker.py).
+# The parent stays lightweight - no torch loaded at any point.

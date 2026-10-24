@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.venv/
+venv/
+tooltip_gpu_venv/
+setup_gpu_venv/
+
+# Build artifacts
+build/
+dist/
+*.exe
+*.iss
+*.spec
+_build_tmp.bat
+
+# Logs and temp files
+*.log
+err.txt
+error.txt
+out.txt
+output.log
+output.txt
+tmp.txt
+tmp2.txt
+
+# Captures and screenshots
+captures/
+
+# Training data
+tooltip_training_data/
+
+# Model files (large binaries)
+*.pt
+!tooltip_best_v6.pt
+
+# Config (user-specific)
+config.json
+
+# OS
+.DS_Store
+Thumbs.db
