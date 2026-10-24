@@ -344,12 +344,11 @@ class PriceChecker:
                 time.sleep(0.5)
             print(f"[pricecheck] after launch+poll, already_open={already_open}")
             if not already_open:
-                on_result(False,
-                    f"Desktop app mode is selected for {ai_tool.title()}, "
-                    f"but the desktop app window could not be found.\n\n"
-                    f"Please make sure the AI desktop app is running and visible, "
-                    f"or switch to \"Open in browser\" mode.")
-                return
+                # Exe was launched (or already running) but window focus detection
+                # failed. Don't abort - proceed so user can manually focus the
+                # AI app window before paste lands.
+                print(f"[pricecheck] exe window not found after launch - proceeding anyway")
+                already_open = False
         else:
             # Browser mode.
             if not new_chat_each_time:
@@ -393,8 +392,11 @@ class PriceChecker:
                 time.sleep(post_kb)
                 print(f"[pricecheck] new chat key sent, waited {post_kb}s")
         else:
-            # No existing AI tool window found - open a new browser tab
-            webbrowser.open(url)
+            # No existing AI tool window found.
+            # In browser mode: open a new tab.
+            # In exe mode: don't open browser - user will manually focus the AI app.
+            if not use_exe:
+                webbrowser.open(url)
             # Give the browser a moment to open the new tab, then focus it.
             # Retry focusing in case the browser needs more time to create the
             # tab and update its window title - especially on the first price
