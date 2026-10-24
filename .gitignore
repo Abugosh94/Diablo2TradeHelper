@@ -34,7 +34,6 @@ tooltip_training_data/
 
 # Model files (large binaries)
 *.pt
-!tooltip_best_v6.pt
 
 # Config (user-specific)
 config.json
