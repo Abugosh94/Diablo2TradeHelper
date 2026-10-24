@@ -8,6 +8,7 @@ image is auto-pasted into the posting form.
 Usage:
   python main.py              launch the GUI control panel
   python main.py --console    run in console hotkey mode (no GUI)
+  python main.py --capture-worker  run YOLO capture worker (subprocess mode)
 """
 import argparse
 import os
@@ -15,6 +16,31 @@ import subprocess
 import sys
 import threading
 import time
+
+# If launched as a capture-worker subprocess (PyInstaller exe or source),
+# run the YOLO capture worker and exit. This lets the parent process stay
+# lightweight (no torch/cv2 loaded) while the worker handles detection.
+if "--capture-worker" in sys.argv:
+    # In exe mode, bundled modules live in _MEIPASS - add to sys.path so
+    # capture_worker can be imported. In source mode, an optional positional
+    # arg gives the worker script's directory.
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass and meipass not in sys.path:
+        sys.path.insert(0, meipass)
+    # Optional: worker_path passed in source mode to add its dir to sys.path
+    args = sys.argv[1:]
+    if "--capture-worker" in args:
+        args.remove("--capture-worker")
+    for extra in args:
+        if not extra:
+            continue
+        # extra could be a file path (worker_path in source mode) or an image path
+        d = extra if os.path.isdir(extra) else os.path.dirname(extra)
+        if d and d not in sys.path:
+            sys.path.insert(0, d)
+    from capture_worker import main as worker_main
+    worker_main()
+    sys.exit(0)
 
 # PyInstaller splash screen: dismiss after 3 seconds.
 # The bootloader shows this before Python starts; we close it from Python.

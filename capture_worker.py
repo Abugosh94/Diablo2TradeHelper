@@ -24,13 +24,16 @@ import cv2
 
 
 def main():
-    if len(sys.argv) < 3:
+    # Strip --capture-worker flag if present (passed by parent process)
+    args = [a for a in sys.argv[1:] if a != "--capture-worker"]
+
+    if len(args) < 2:
         print("Usage: capture_worker.py <output_image_path> <confidence_path>",
               file=sys.stderr)
         sys.exit(1)
 
-    output_path = sys.argv[1]
-    conf_path = sys.argv[2]
+    output_path = args[0]
+    conf_path = args[1]
 
     try:
         # Import inside worker process so torch is never loaded in the parent.

@@ -341,8 +341,16 @@ def capture_tooltip_via_subprocess(conf_thres=0.5):
 
     try:
         python_exe = sys.executable
+        # --capture-worker must come AFTER the script path, otherwise
+        # Python interprets it as an option to the interpreter itself.
+        # Source mode: [python.exe, worker.py, --capture-worker, img, conf]
+        # Exe mode:    [exe.exe, --capture-worker, img, conf]
+        if getattr(sys, "frozen", False):
+            worker_args = [python_exe, "--capture-worker", img_path, conf_path]
+        else:
+            worker_args = [python_exe, worker_path, "--capture-worker", img_path, conf_path]
         result = subprocess.run(
-            [python_exe, worker_path, img_path, conf_path],
+            worker_args,
             capture_output=True,
             text=True,
             timeout=60,
@@ -382,13 +390,20 @@ def capture_tooltip(conf_thres=0.5):
     """Route tooltip capture based on config.
 
     If config['capture']['use_subprocess'] is True, runs the detector in a
-    subprocess so the parent never loads torch. Otherwise runs in-process
-    (faster per-capture, but memory stays resident).
+    subprocess so the parent never loads torch. Falls back to in-process
+    detection if the subprocess is unavailable or fails. Otherwise runs
+    in-process (faster per-capture, but memory stays resident).
 
     Returns (crop_bgr, confidence) or (None, 0.0).
     """
-    if _cfg.get("capture", {}).get("use_subprocess", False):
-        return capture_tooltip_via_subprocess(conf_thres)
+    use_subprocess = _cfg.get("capture", {}).get("use_subprocess", False)
+    if use_subprocess:
+        img, conf = capture_tooltip_via_subprocess(conf_thres)
+        if img is not None:
+            return img, conf
+        # Subprocess failed or found nothing - fall back to in-process so
+        # the user isn't left with a broken function.
+        print("[capture] subprocess returned no result - falling back to in-process")
     return capture_tooltip_yolo(conf_thres)
 
 
