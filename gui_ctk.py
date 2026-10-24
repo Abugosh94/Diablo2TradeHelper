@@ -712,6 +712,75 @@ class App:
 
         save_config(self.cfg)
 
+    # ------------------------------------------------------------------
+    # Worker idle timeout helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _format_idle_timeout(seconds: int) -> str:
+        """Convert seconds to a human-readable label for the dropdown."""
+        if seconds < 60:
+            return f"{seconds} sec"
+        minutes = seconds // 60
+        if minutes == 1:
+            return "1 min"
+        if minutes < 60:
+            return f"{minutes} mins"
+        hours = minutes // 60
+        if hours == 1:
+            return "1 hour"
+        return f"{hours} hours"
+
+    @staticmethod
+    def _parse_idle_timeout(label: str) -> int:
+        """Convert a dropdown label back to seconds."""
+        label = label.strip().lower()
+        if label == "custom":
+            return -1  # sentinel; handled by custom entry
+        try:
+            num = int("".join(c for c in label if c.isdigit()))
+        except ValueError:
+            return 300
+        if "hour" in label:
+            return num * 3600
+        return num * 60
+
+    def _on_idle_timeout_changed(self, selection: str):
+        """Handle dropdown selection changes."""
+        self._toggle_idle_timeout_custom()
+        if selection == "Custom":
+            return
+        seconds = self._parse_idle_timeout(selection)
+        self.cfg.setdefault("capture", {})["worker_idle_timeout"] = seconds
+        save_config(self.cfg)
+        from capture import set_worker_idle_timeout
+        set_worker_idle_timeout(seconds)
+        self._set_status(f"Worker idle timeout set to {selection}")
+
+    def _toggle_idle_timeout_custom(self):
+        """Show/hide the custom minutes entry based on dropdown selection."""
+        if hasattr(self, "idle_timeout_custom_entry"):
+            if self.idle_timeout_var.get() == "Custom":
+                self.idle_timeout_custom_entry.configure(state="normal")
+            else:
+                self.idle_timeout_custom_entry.configure(state="disabled")
+
+    def _apply_idle_timeout_custom(self):
+        """Read the custom minutes entry and save it."""
+        try:
+            minutes = int(self.idle_timeout_custom_var.get().strip())
+            if minutes < 1:
+                minutes = 1
+        except ValueError:
+            minutes = 300
+        seconds = minutes * 60
+        self.cfg.setdefault("capture", {})["worker_idle_timeout"] = seconds
+        save_config(self.cfg)
+        from capture import set_worker_idle_timeout
+        set_worker_idle_timeout(seconds)
+        self.idle_timeout_var.set(self._format_idle_timeout(seconds))
+        self._set_status(f"Worker idle timeout set to {minutes} minute(s)")
+
 
 
     def _build_ui(self):
@@ -1752,6 +1821,32 @@ class App:
             text_color=("#18181B", "#F4F4F5"),
             variable=self.save_captures_var).pack(
             anchor="w", padx=6, pady=(2, 6))
+
+        # Worker idle timeout dropdown
+        self.idle_timeout_var = ctk.StringVar(
+            value=self._format_idle_timeout(self.cfg.get("capture", {}).get("worker_idle_timeout", 300)))
+
+        self.idle_timeout_combo = ctk.CTkOptionMenu(
+            self.opt_frame,
+            variable=self.idle_timeout_var,
+            values=["1 min", "3 mins", "5 mins", "10 mins", "15 mins", "30 mins", "45 mins", "1 hour", "Custom"],
+            width=140,
+            command=self._on_idle_timeout_changed,
+        )
+        self.idle_timeout_combo.pack(anchor="w", padx=6, pady=(6, 0))
+
+        self.idle_timeout_custom_var = ctk.StringVar(value="")
+        self.idle_timeout_custom_entry = ctk.CTkEntry(
+            self.opt_frame,
+            textvariable=self.idle_timeout_custom_var,
+            placeholder_text="Custom minutes",
+            width=140,
+            fg_color=("#E4E4E7", "#27272A"),
+            border_color=("#E4E4E7", "#27272A"),
+        )
+        self.idle_timeout_custom_entry.pack(anchor="w", padx=6, pady=(2, 6))
+        self.idle_timeout_custom_entry.bind("<Return>", lambda e: self._apply_idle_timeout_custom())
+        self._toggle_idle_timeout_custom()
 
         ctk.CTkButton(self.opt_frame, text="Apply",
 
@@ -4411,6 +4506,15 @@ class App:
         self.cfg["manual_screenshot_override"] = bool(self.manual_override_var.get())
 
         self.cfg.setdefault("scan", {})["save_captures"] = bool(self.save_captures_var.get())
+
+        # Worker idle timeout: if Custom is selected, use the custom entry value
+        if self.idle_timeout_var.get() == "Custom":
+            self._apply_idle_timeout_custom()
+        else:
+            seconds = self._parse_idle_timeout(self.idle_timeout_var.get())
+            self.cfg.setdefault("capture", {})["worker_idle_timeout"] = seconds
+            from capture import set_worker_idle_timeout
+            set_worker_idle_timeout(seconds)
 
         save_config(self.cfg)
 

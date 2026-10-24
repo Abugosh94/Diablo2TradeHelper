@@ -27,8 +27,31 @@ _meipass = getattr(sys, "_MEIPASS", None)
 if _meipass and _meipass not in sys.path:
     sys.path.insert(0, _meipass)
 
-IDLE_TIMEOUT = 300  # 5 minutes of inactivity before self-termination
 REQUEST_DIR = os.path.join(tempfile.gettempdir(), "d2_capture_requests")
+
+
+def _read_idle_timeout() -> int:
+    """Read the configured idle timeout from config.json.
+
+    Reads on every call so GUI changes take effect without restarting the worker.
+    Falls back to 300 seconds (5 min) if config is missing/unreadable.
+    """
+    try:
+        import json
+        config_path = os.path.join(app_dir(), "config.json")
+        with open(config_path, "r") as f:
+            cfg = json.load(f)
+        return int(cfg.get("capture", {}).get("worker_idle_timeout", 300))
+    except Exception:
+        return 300
+
+
+def app_dir():
+    """Directory where config.json lives (exe folder when frozen)."""
+    import sys
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
 
 MIN_BOX_W = 250
 MIN_BOX_H = 55
@@ -189,8 +212,9 @@ def main():
 
     while True:
         now = time.time()
-        if now - last_activity > IDLE_TIMEOUT:
-            print(f"[capture_worker] Idle timeout ({IDLE_TIMEOUT}s) - exiting",
+        idle_timeout = _read_idle_timeout()
+        if now - last_activity > idle_timeout:
+            print(f"[capture_worker] Idle timeout ({idle_timeout}s) - exiting",
                   file=sys.stderr, flush=True)
             break
 

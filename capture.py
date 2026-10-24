@@ -36,7 +36,20 @@ _cfg = load_config()
 # ---------------------------------------------------------------------------
 _worker_process = None          # subprocess.Popen handle (or None)
 _LAST_REQUEST_TIME = 0.0        # monotonic time of last capture request
-WORKER_IDLE_TIMEOUT = 300.0     # 5 minutes – worker self-kills after this
+
+
+def get_worker_idle_timeout() -> float:
+    """Return the configured worker idle timeout in seconds.
+
+    Reads from config['capture']['worker_idle_timeout'] with a 300s default.
+    """
+    return float(_cfg.get("capture", {}).get("worker_idle_timeout", 300))
+
+
+def set_worker_idle_timeout(seconds: int):
+    """Persist a new worker idle timeout (seconds) to config."""
+    _cfg.setdefault("capture", {})["worker_idle_timeout"] = int(seconds)
+    save_config(_cfg)
 
 
 def _match_title():
