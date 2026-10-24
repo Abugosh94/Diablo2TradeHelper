@@ -3252,29 +3252,41 @@ class App:
         if message == "tooltip_not_detected":
             # Capture full window first (in RAM) so manual crop can use it
             from capture import capture_full_window
-            full_img, _rect = capture_full_window()
+            try:
+                full_img, _rect = capture_full_window()
+            except Exception:
+                full_img = None
 
             # Focus the app window before showing the error popup
-            self.root.focus_force()
-            self.root.lift()
-            self.root.attributes("-topmost", True)
-            self.root.attributes("-topmost", False)
+            try:
+                self.root.focus_force()
+                self.root.lift()
+                self.root.attributes("-topmost", True)
+                self.root.attributes("-topmost", False)
+            except Exception:
+                pass
 
             # Show error popup explaining the failure
             from tkinter import messagebox
-            messagebox.showerror(
-                "Tooltip not detected",
-                "The ONNX detector did not find an item tooltip.\n\n"
-                "Make sure you are hovering an item in Diablo II and try again.\n"
-                "You can also use Manual Crop (F10) to select the area."
-            )
+            try:
+                messagebox.showerror(
+                    "Tooltip not detected",
+                    "The ONNX detector did not find an item tooltip.\n\n"
+                    "Make sure you are hovering an item in Diablo II and try again.\n"
+                    "You can also use Manual Crop (F10) to select the area."
+                )
+            except Exception:
+                pass
 
             self.pc_status_var.set("Auto-capture failed - select the area manually...")
 
             # Open manual crop with the pre-captured image
             if full_img is not None:
-                self._manual_crop_blocking(
-                    "Auto-detect failed - drag the tooltip area", full_img)
+                try:
+                    self._manual_crop_blocking(
+                        "Auto-detect failed - drag the tooltip area", full_img)
+                except Exception as e:
+                    print(f"[pricecheck] Manual crop failed: {e}", flush=True)
             else:
                 self._set_status("Diablo window not found - open the game first")
             return
@@ -4226,31 +4238,47 @@ class App:
                         why = last_yolo_capture.get("reason", "no tooltip found")
 
                         # Capture full window first (in RAM) so manual crop can use it
+                        why = last_yolo_capture.get("reason", "no tooltip found")
+
+                        # Capture full window first (in RAM) so manual crop can use it
                         from capture import capture_full_window
-                        full_img, _rect = capture_full_window()
+                        try:
+                            full_img, _rect = capture_full_window()
+                        except Exception:
+                            full_img = None
 
                         # Focus the app window before showing the error popup
-                        self.root.focus_force()
-                        self.root.lift()
-                        self.root.attributes("-topmost", True)
-                        self.root.attributes("-topmost", False)
+                        try:
+                            self.root.focus_force()
+                            self.root.lift()
+                            self.root.attributes("-topmost", True)
+                            self.root.attributes("-topmost", False)
+                        except Exception:
+                            pass
 
                         # Show error popup explaining the failure
                         from tkinter import messagebox
-                        messagebox.showerror(
-                            "Tooltip not detected",
-                            "The ONNX detector did not find an item tooltip.\n\n"
-                            "Make sure you are hovering an item in Diablo II and try again.\n"
-                            "You can also use Manual Crop (F10) to select the area."
-                        )
+                        try:
+                            messagebox.showerror(
+                                "Tooltip not detected",
+                                "The ONNX detector did not find an item tooltip.\n\n"
+                                "Make sure you are hovering an item in Diablo II and try again.\n"
+                                "You can also use Manual Crop (F10) to select the area."
+                            )
+                        except Exception:
+                            pass
 
                         self._set_status(f"Auto-capture failed ({why}) - "
                                          "select the area manually...")
 
                         # Open manual crop with the pre-captured image
                         if full_img is not None:
-                            img = self._manual_crop_blocking(
-                                f"Auto-detect failed ({why}) - drag the tooltip area", full_img)
+                            try:
+                                img = self._manual_crop_blocking(
+                                    f"Auto-detect failed ({why}) - drag the tooltip area", full_img)
+                            except Exception as e:
+                                print(f"[list] Manual crop failed: {e}", flush=True)
+                                img = None
                         else:
                             self._set_status("Diablo window not found - open the game first")
                             img = None

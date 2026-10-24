@@ -126,22 +126,31 @@ class App:
                 if best_crop is None:
                     # Capture full window first (in RAM) so manual crop can use it
                     from capture import capture_full_window
-                    full_img, _rect = capture_full_window()
+                    try:
+                        full_img, _rect = capture_full_window()
+                    except Exception:
+                        full_img = None
 
                     # ONNX failed or found no tooltip - show error and open manual crop
                     print("[list] No item tooltip detected - showing error and manual crop", flush=True)
                     from tkinter import messagebox
-                    messagebox.showerror(
-                        "Tooltip not detected",
-                        "The ONNX detector did not find an item tooltip.\n\n"
-                        "Make sure you are hovering an item in Diablo II and try again.\n"
-                        "You can also use Manual Crop (F10) to select the area."
-                    )
+                    try:
+                        messagebox.showerror(
+                            "Tooltip not detected",
+                            "The ONNX detector did not find an item tooltip.\n\n"
+                            "Make sure you are hovering an item in Diablo II and try again.\n"
+                            "You can also use Manual Crop (F10) to select the area."
+                        )
+                    except Exception:
+                        pass
 
                     # Open manual crop with the pre-captured image
                     if full_img is not None:
-                        self._manual_crop_blocking(
-                            "Auto-detect failed - drag the tooltip area", full_img)
+                        try:
+                            self._manual_crop_blocking(
+                                "Auto-detect failed - drag the tooltip area", full_img)
+                        except Exception as e:
+                            print(f"[list] Manual crop failed: {e}", flush=True)
                     else:
                         self._set_status("Diablo window not found - open the game first")
                     return
