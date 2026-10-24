@@ -16,17 +16,15 @@ class InventoryScanner:
         Returns the crop image, or None when no valid tooltip is found -
         we must never post an empty/garbage crop to the website.
         """
-        from capture import (capture_tooltip_yolo, capture_tooltip_near_cursor,
-                             get_tooltip_model)
+        from capture import capture_tooltip
         try:
-            if get_tooltip_model() is not None:
-                img, _conf = capture_tooltip_yolo()
-                if img is not None:
-                    return img
-                # YOLO ran but found nothing - fall back to legacy detector
-                print("[capture] YOLO returned no crop - falling back to legacy")
+            img, _conf = capture_tooltip()
+            if img is not None:
+                return img
+            # YOLO returned no crop - do not fall back to legacy detector.
+            # The GUI will open manual crop selection instead.
+            print("[capture] YOLO returned no crop - manual crop required")
         except Exception as e:
-            print(f"[capture] YOLO path failed ({e}) - trying legacy detector")
-        img, _origin = capture_tooltip_near_cursor()
-        return img
+            print(f"[capture] YOLO path failed ({e}) - manual crop required")
+        return None
 

@@ -89,8 +89,8 @@ class App:
         def _run():
             try:
                 # 1+2. Capture the hovered tooltip with the YOLO detector
-                from capture import capture_tooltip_yolo
-                best_crop, best_conf = capture_tooltip_yolo()
+                from capture import capture_tooltip
+                best_crop, best_conf = capture_tooltip()
 
                 if best_crop is None:
                     print("[list] No item tooltip detected - hover an item and try again")

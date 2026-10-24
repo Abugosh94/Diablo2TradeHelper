@@ -129,13 +129,13 @@ def capture_tooltip():
     Returns (pil_image, None) on success, or (None, error_message) on
     failure. The returned image is a PIL RGB image.
     """
-    from capture import capture_tooltip_yolo, game_window_found, last_yolo_capture
+    from capture import capture_tooltip, game_window_found, last_yolo_capture
     import cv2
 
     if not game_window_found():
         return None, "Diablo II window not found - open the game first."
 
-    img, _conf = capture_tooltip_yolo()
+    img, _conf = capture_tooltip()
     if img is None:
         why = last_yolo_capture.get("reason", "no tooltip detected")
         return None, (

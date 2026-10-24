@@ -63,6 +63,9 @@ DEFAULT_CONFIG = {
         "captures_dir": "captures",
     },
     "manual_screenshot_override": False,  # quick-list always opens manual region selection
+    "capture": {
+        "use_subprocess": True,  # run YOLO detector in subprocess; parent stays lightweight
+    },
     "paste_image_max_kb": 250,  # max size of the clipboard PNG pasted to trade sites
     "minimize_to_tray": True,  # GUI: close button hides to system tray
     "close_behavior": "exit",  # 'exit' | 'minimize'

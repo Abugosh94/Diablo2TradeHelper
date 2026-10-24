@@ -19,6 +19,8 @@ import os
 import sys
 import threading
 import time
+import subprocess
+import tempfile
 
 import cv2
 import numpy as np
@@ -290,6 +292,76 @@ def unload_tooltip_model():
     except Exception:
         pass
     print("[yolo] model unloaded - RAM freed for reuse")
+
+
+def capture_tooltip_via_subprocess(conf_thres=0.5):
+    """Capture the tooltip using a separate Python process.
+
+    The worker loads torch + YOLO, captures one tooltip, saves it to a temp
+    PNG, then exits. The operating system reclaims ALL worker memory when the
+    process ends, so the parent app never incurs the ~800 MB torch/cv2
+    resident cost.
+
+    Returns (crop_bgr, confidence) or (None, 0.0), same signature as
+    capture_tooltip_yolo().
+
+    Adds ~2-3 seconds per capture (worker cold start), but idle memory stays
+    at baseline forever.
+    """
+    tmpdir = tempfile.gettempdir()
+    ts = int(time.time() * 1000)
+    img_path = os.path.join(tmpdir, f"d2_capture_{os.getpid()}_{ts}.png")
+    conf_path = img_path + ".conf"
+
+    worker_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "capture_worker.py")
+
+    try:
+        python_exe = sys.executable
+        result = subprocess.run(
+            [python_exe, worker_path, img_path, conf_path],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if os.path.exists(img_path) and os.path.getsize(img_path) > 0:
+            img = cv2.imread(img_path)
+            conf = 0.0
+            if os.path.exists(conf_path):
+                try:
+                    with open(conf_path, "r") as f:
+                        conf = float(f.read().strip())
+                except Exception:
+                    pass
+            return img, conf
+    except subprocess.TimeoutExpired:
+        print("[capture] subprocess timed out")
+    except Exception as e:
+        print(f"[capture] subprocess error: {e}")
+    finally:
+        for p in (img_path, conf_path):
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                pass
+
+    return None, 0.0
+
+
+def capture_tooltip(conf_thres=0.5):
+    """Route tooltip capture based on config.
+
+    If config['capture']['use_subprocess'] is True, runs the detector in a
+    subprocess so the parent never loads torch. Otherwise runs in-process
+    (faster per-capture, but memory stays resident).
+
+    Returns (crop_bgr, confidence) or (None, 0.0).
+    """
+    if _cfg.get("capture", {}).get("use_subprocess", False):
+        return capture_tooltip_via_subprocess(conf_thres)
+    return capture_tooltip_yolo(conf_thres)
 
 
 # Sanity gates for detection boxes. Real D2R tooltips range from ~350x72 up
