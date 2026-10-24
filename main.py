@@ -130,23 +130,13 @@ class App:
 
                     # ONNX failed or found no tooltip - show error and open manual crop
                     print("[list] No item tooltip detected - showing error and manual crop", flush=True)
-                    import tkinter as tk
                     from tkinter import messagebox
-                    root = tk.Tk()
-                    root.withdraw()
                     messagebox.showerror(
                         "Tooltip not detected",
                         "The ONNX detector did not find an item tooltip.\n\n"
                         "Make sure you are hovering an item in Diablo II and try again.\n"
                         "You can also use Manual Crop (F10) to select the area."
                     )
-                    root.destroy()
-
-                    # Focus the app window after the popup is dismissed
-                    self.root.focus_force()
-                    self.root.lift()
-                    self.root.attributes("-topmost", True)
-                    self.root.attributes("-topmost", False)
 
                     # Open manual crop with the pre-captured image
                     if full_img is not None:

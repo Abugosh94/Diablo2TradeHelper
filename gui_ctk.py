@@ -3254,25 +3254,22 @@ class App:
             from capture import capture_full_window
             full_img, _rect = capture_full_window()
 
-            import tkinter as tk
+            # Focus the app window before showing the error popup
+            self.root.focus_force()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.root.attributes("-topmost", False)
+
+            # Show error popup explaining the failure
             from tkinter import messagebox
-            root = tk.Tk()
-            root.withdraw()
             messagebox.showerror(
                 "Tooltip not detected",
                 "The ONNX detector did not find an item tooltip.\n\n"
                 "Make sure you are hovering an item in Diablo II and try again.\n"
                 "You can also use Manual Crop (F10) to select the area."
             )
-            root.destroy()
 
             self.pc_status_var.set("Auto-capture failed - select the area manually...")
-
-            # Focus the app window after the popup is dismissed
-            self.root.focus_force()
-            self.root.lift()
-            self.root.attributes("-topmost", True)
-            self.root.attributes("-topmost", False)
 
             # Open manual crop with the pre-captured image
             if full_img is not None:
@@ -4232,27 +4229,23 @@ class App:
                         from capture import capture_full_window
                         full_img, _rect = capture_full_window()
 
+                        # Focus the app window before showing the error popup
+                        self.root.focus_force()
+                        self.root.lift()
+                        self.root.attributes("-topmost", True)
+                        self.root.attributes("-topmost", False)
+
                         # Show error popup explaining the failure
-                        import tkinter as tk
                         from tkinter import messagebox
-                        root = tk.Tk()
-                        root.withdraw()
                         messagebox.showerror(
                             "Tooltip not detected",
                             "The ONNX detector did not find an item tooltip.\n\n"
                             "Make sure you are hovering an item in Diablo II and try again.\n"
                             "You can also use Manual Crop (F10) to select the area."
                         )
-                        root.destroy()
 
                         self._set_status(f"Auto-capture failed ({why}) - "
                                          "select the area manually...")
-
-                        # Focus the app window after the popup is dismissed
-                        self.root.focus_force()
-                        self.root.lift()
-                        self.root.attributes("-topmost", True)
-                        self.root.attributes("-topmost", False)
 
                         # Open manual crop with the pre-captured image
                         if full_img is not None:
