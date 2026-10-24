@@ -220,12 +220,16 @@ class PriceChecker:
         # Always capture the tooltip image first
         pil_img, err = capture_tooltip()
         if err:
-            on_result(False, err)
-            return
+            print(f"[pricecheck] Capture failed: {err}")
+            # Still proceed to open the redirect URL so the user isn't stranded.
+            # We'll paste an empty/missing image notice instead.
+            pil_img = None
+            # Don't return - continue to open the browser so user can manually crop
 
-        # Copy the screenshot to the clipboard so the user can paste it
-        # into any AI tool manually if needed.
-        image_to_clipboard(pil_img)
+        if pil_img is not None:
+            # Copy the screenshot to the clipboard so the user can paste it
+            # into any AI tool manually if needed.
+            image_to_clipboard(pil_img)
 
         if mode == "redirect":
             self._run_redirect(ai_tool, filled_prompt, pil_img, on_result)
@@ -415,18 +419,22 @@ class PriceChecker:
 
         # Paste the screenshot image (Ctrl+V) - both prompt and image
         # are now in the input box waiting to be submitted together
-        time.sleep(1.0)
-        print(f"[pricecheck] putting image on clipboard")
-        image_to_clipboard(pil_img)
-        time.sleep(0.5)
-        _paste_clipboard()
-        print(f"[pricecheck] image pasted")
+        if pil_img is not None:
+            time.sleep(1.0)
+            print(f"[pricecheck] putting image on clipboard")
+            image_to_clipboard(pil_img)
+            time.sleep(0.5)
+            _paste_clipboard()
+            print(f"[pricecheck] image pasted")
+        else:
+            print("[pricecheck] No screenshot captured - prompt text only")
 
         # Wait for the image to finish uploading before submitting.
         # Applies to both browser and desktop app modes - upload speed
         # varies between users and tools, so we poll rather than using a
         # fixed sleep.
-        self.wait_for_upload_complete()
+        if pil_img is not None:
+            self.wait_for_upload_complete()
         _submit()
 
         preview = filled_prompt.strip()
