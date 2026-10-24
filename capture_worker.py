@@ -41,9 +41,9 @@ def _read_idle_timeout() -> int:
         config_path = os.path.join(app_dir(), "config.json")
         with open(config_path, "r") as f:
             cfg = json.load(f)
-        return int(cfg.get("capture", {}).get("worker_idle_timeout", 300))
+        return int(cfg.get("capture", {}).get("worker_idle_timeout", 180))
     except Exception:
-        return 300
+        return 180
 
 
 def app_dir():

@@ -43,7 +43,7 @@ def get_worker_idle_timeout() -> float:
 
     Reads from config['capture']['worker_idle_timeout'] with a 300s default.
     """
-    return float(_cfg.get("capture", {}).get("worker_idle_timeout", 300))
+    return float(_cfg.get("capture", {}).get("worker_idle_timeout", 180))
 
 
 def set_worker_idle_timeout(seconds: int):

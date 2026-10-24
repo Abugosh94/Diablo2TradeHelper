@@ -65,7 +65,7 @@ DEFAULT_CONFIG = {
     "manual_screenshot_override": False,  # quick-list always opens manual region selection
     "capture": {
         "use_subprocess": True,  # run YOLO detector in subprocess; parent stays lightweight
-        "worker_idle_timeout": 300,  # seconds of inactivity before capture worker exits (300 = 5 min)
+        "worker_idle_timeout": 180,  # seconds of inactivity before capture worker exits (180 = 3 min)
     },
     "paste_image_max_kb": 250,  # max size of the clipboard PNG pasted to trade sites
     "minimize_to_tray": True,  # GUI: close button hides to system tray
