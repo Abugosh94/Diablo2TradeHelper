@@ -178,18 +178,10 @@ def main():
                     help="run in console hotkey mode instead of the GUI")
     args = ap.parse_args()
 
-    # Warm the tooltip model in the background so the first F9 is instant.
-    def _warm_tooltip_model():
-        try:
-            import torch  # noqa: F401 - preload c10.dll/torch_cpu.dll early
-            print(f"[startup] torch {torch.__version__} ready")
-            from capture import get_tooltip_model
-            m = get_tooltip_model()
-            print("[startup] tooltip model ready" if m
-                  else "[startup] tooltip model UNAVAILABLE - legacy detector in use")
-        except Exception as e:
-            print(f"[startup] tooltip model warmup failed: {e}")
-    threading.Thread(target=_warm_tooltip_model, daemon=True).start()
+    # NOTE: the YOLO / torch model is intentionally NOT preloaded at startup.
+    # It is loaded on first use by capture.get_tooltip_model() and unloaded
+    # after each capture (unload_tooltip_model) so idle memory stays low.
+    # The first F9 / F8 press pays a one-time cold-start load.
 
     if args.console:
         app = App()

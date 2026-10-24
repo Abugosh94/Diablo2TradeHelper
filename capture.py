@@ -251,6 +251,47 @@ def get_tooltip_model():
     return _TOOLTIP_MODEL
 
 
+def unload_tooltip_model():
+    """Release the cached YOLO model to free RAM after a capture.
+
+    The next call to get_tooltip_model() will reload the model
+    (one-time cold start). Python and torch may hold onto freed memory
+    in their internal allocators for reuse, so Windows Task Manager may
+    not show an immediate drop, but the memory is released for reuse by
+    this process and will not grow unboundedly.
+    """
+    global _TOOLTIP_MODEL, _TOOLTIP_MODEL_FAILED
+    with _TOOLTIP_MODEL_LOCK:
+        _TOOLTIP_MODEL = None
+        _TOOLTIP_MODEL_FAILED = False
+    # Force Python garbage collection to reclaim circular/ref cycles
+    import gc
+    gc.collect()
+    # Clear torch's caching allocator (CPU and CUDA) so held memory is
+    # released back to the OS as much as possible.
+    try:
+        import torch
+        if hasattr(torch, "cuda") and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if hasattr(torch, "_C") and hasattr(torch._C, "_cuda_clearCublasWorkspaces"):
+            try:
+                torch._C._cuda_clearCublasWorkspaces()
+            except Exception:
+                pass
+    except Exception:
+        pass
+    # Ask Windows to trim the process working set so Task Manager reflects
+    # the freed memory sooner. Python/torch may still hold it internally,
+    # but this nudges the OS to page out unused pages.
+    try:
+        import ctypes
+        psapi = ctypes.windll.psapi
+        psapi.EmptyWorkingSet(ctypes.windll.kernel32.GetCurrentProcess())
+    except Exception:
+        pass
+    print("[yolo] model unloaded - RAM freed for reuse")
+
+
 # Sanity gates for detection boxes. Real D2R tooltips range from ~350x72 up
 # to very wide name-only unique tooltips (1045x98, aspect 13:1 - trained on
 # the UserCV_* crops). Fragments of unrecognized tooltips (170x220 pieces)
@@ -431,6 +472,7 @@ def capture_tooltip_yolo(conf_thres=0.5):
         else:
             last_yolo_capture["reason"] = f"no detection above conf {conf_thres}"
             print(f"[yolo] no tooltip detected (conf>{conf_thres})")
+        unload_tooltip_model()
         return None, 0.0
     # Border-align the box: include the full black border (expand) and drop
     # bright game-scene margin (shave) - never cutting tooltip content.
@@ -447,6 +489,7 @@ def capture_tooltip_yolo(conf_thres=0.5):
         threading.Thread(
             target=lambda im=_crop_snap: save_capture(im, "tooltip_yolo", max_size_mb=1),
             daemon=True).start()
+    unload_tooltip_model()
     return best, best_conf
 
 
@@ -488,6 +531,7 @@ def detect_tooltip_yolo_frame(frame, cur_x=None, cur_y=None, conf_thres=0.5):
                 x1, y1, x2, y2 = _pad_box(frame, (x1, y1, x2, y2))
                 best = frame[y1:y2, x1:x2].copy()
                 best_score = score
+    unload_tooltip_model()
     return best
 
 
