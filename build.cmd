@@ -15,7 +15,7 @@ rem --- UPX (compression) --------------------------------------
 set "UPX_DIR=C:\upx-5.2.1-win64"
 
 rem --- Data files to bundle (source;dest) ---------------------
-set "DATA_FILES=--add-data "tooltip_best_v6.pt;." --add-data "Logo.ico;." --add-data "Logo.png;." --add-data "Prompt.txt;.""
+set "DATA_FILES=--add-data "tooltip_best_v6.pt;." --add-data "Logo.ico;." --add-data "Logo.png;." --add-data "Prompt.txt;." --add-data "capture_worker.py;.""
 
 rem --- Packages that need full collection ---------------------
 set "COLLECT_ALL=--collect-all ultralytics --collect-all torchvision --collect-all torch --collect-all pystray --collect-all PIL --collect-all customtkinter --collect-all cv2 --collect-all mss --collect-all pynput --collect-all reportlab --collect-all pygetwindow --collect-all numpy"

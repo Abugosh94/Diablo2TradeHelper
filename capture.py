@@ -322,6 +322,19 @@ class SubprocessError(Exception):
     pass
 
 
+def _log_capture_error(text: str):
+    """Append an error message to error_log.txt so issues are diagnosable
+    when running as a windowless exe (no console visible)."""
+    try:
+        from datetime import datetime
+        from config import app_dir
+        path = os.path.join(app_dir(), "error_log.txt")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"\n[{datetime.now():%Y-%m-%d %H:%M:%S}] {text}\n")
+    except Exception:
+        pass
+
+
 def capture_tooltip_via_subprocess(conf_thres=0.5):
     """Capture the tooltip using a separate Python process.
 
@@ -411,6 +424,8 @@ def capture_tooltip(conf_thres=0.5):
         except SubprocessError as e:
             # Subprocess itself failed (worker missing, timeout, crash).
             # Fall back to in-process detection so the user isn't stranded.
+            # Log to error_log.txt since exe has no visible console.
+            _log_capture_error(f"subprocess error ({e}) - falling back to in-process (torch will load)")
             print(f"[capture] subprocess error ({e}) - falling back to in-process")
             return capture_tooltip_yolo(conf_thres)
         if img is not None:
