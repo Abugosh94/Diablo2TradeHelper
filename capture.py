@@ -15,6 +15,7 @@ def _show_cursor():
     """Show the Windows cursor."""
     import win32gui
     win32gui.ShowCursor(True)
+import json
 import os
 import sys
 import threading
@@ -29,6 +30,13 @@ import mss
 from config import load_config, save_config, app_dir
 
 _cfg = load_config()
+
+# ---------------------------------------------------------------------------
+# Persistent subprocess worker management
+# ---------------------------------------------------------------------------
+_worker_process = None          # subprocess.Popen handle (or None)
+_LAST_REQUEST_TIME = 0.0        # monotonic time of last capture request
+WORKER_IDLE_TIMEOUT = 300.0     # 5 minutes – worker self-kills after this
 
 
 def _match_title():
@@ -295,18 +303,11 @@ def unload_tooltip_model():
 
 
 def _find_worker_path():
-    """Locate capture_worker.py for subprocess mode.
-
-    When running from source, it's next to capture.py.
-    When running as a PyInstaller onefile exe, it's extracted to
-    sys._MEIPASS temp dir (we add it to the .spec datas).
-    """
-    # Source mode: next to capture.py
+    """Locate capture_worker.py for subprocess mode."""
     src_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "capture_worker.py")
     if os.path.exists(src_path):
         return src_path
-    # PyInstaller onefile: bundled in _MEIPASS
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
         exe_path = os.path.join(meipass, "capture_worker.py")
@@ -316,15 +317,12 @@ def _find_worker_path():
 
 
 class SubprocessError(Exception):
-    """Raised when the capture subprocess itself fails (timeout, crash, etc.).
-    Distinct from 'worker ran fine but found no tooltip' which returns
-    (None, 0.0) normally."""
+    """Raised when the capture subprocess itself fails."""
     pass
 
 
 def _log_capture_error(text: str):
-    """Append an error message to error_log.txt so issues are diagnosable
-    when running as a windowless exe (no console visible)."""
+    """Append an error message to error_log.txt."""
     try:
         from datetime import datetime
         from config import app_dir
@@ -335,68 +333,106 @@ def _log_capture_error(text: str):
         pass
 
 
-def capture_tooltip_via_subprocess(conf_thres=0.5):
-    """Capture the tooltip using a separate Python process.
+def _ensure_worker_running():
+    """Start the persistent capture worker if it isn't already alive."""
+    global _worker_process
+    if _worker_process is not None:
+        poll = _worker_process.poll()
+        if poll is None:
+            return _worker_process
+        _worker_process = None
 
-    The worker loads torch + YOLO, captures one tooltip, saves it to a temp
-    PNG, then exits. The operating system reclaims ALL worker memory when the
-    process ends, so the parent app never incurs the ~800 MB torch/cv2
-    resident cost.
-
-    Returns (crop_bgr, confidence) or (None, 0.0), same signature as
-    capture_tooltip_yolo().
-
-    Adds ~2-3 seconds per capture (worker cold start), but idle memory stays
-    at baseline forever.
-    """
     worker_path = _find_worker_path()
     if worker_path is None:
         raise SubprocessError("capture_worker.py not found")
+
+    python_exe = sys.executable
+    if getattr(sys, "frozen", False):
+        worker_args = [python_exe, "--capture-worker"]
+    else:
+        worker_args = [python_exe, worker_path, "--capture-worker"]
+
+    try:
+        _worker_process = subprocess.Popen(
+            worker_args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        print(f"[capture] Worker subprocess started (PID={_worker_process.pid})")
+        return _worker_process
+    except Exception as e:
+        _worker_process = None
+        raise SubprocessError(f"Failed to start worker: {e}")
+
+
+def _write_capture_request(output_path: str, conf_path: str,
+                           conf_thres: float, timeout: float = 30.0):
+    """Write a capture request file and wait for the worker to respond.
+
+    Returns (img, conf) or (None, 0.0).
+    """
+    import uuid
+
+    req_dir = os.path.join(tempfile.gettempdir(), "d2_capture_requests")
+    os.makedirs(req_dir, exist_ok=True)
+
+    req_id = uuid.uuid4().hex
+    req_file = os.path.join(req_dir, f"d2_req_{req_id}.req")
+    request = {
+        "output_path": output_path,
+        "conf_path": conf_path,
+        "conf_thres": conf_thres,
+    }
+
+    tmp_req = req_file + ".tmp"
+    with open(tmp_req, "w") as f:
+        json.dump(request, f)
+    os.replace(tmp_req, req_file)
+
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        if not os.path.exists(req_file):
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                img = cv2.imread(output_path)
+                conf = 0.0
+                if os.path.exists(conf_path):
+                    try:
+                        with open(conf_path, "r") as f:
+                            conf = float(f.read().strip())
+                    except Exception:
+                        pass
+                return img, conf
+            return None, 0.0
+        time.sleep(0.1)
+
+    try:
+        os.remove(req_file)
+    except Exception:
+        pass
+    raise SubprocessError("worker did not respond within timeout")
+
+
+def capture_tooltip_via_subprocess(conf_thres=0.5):
+    """Capture the tooltip using the persistent subprocess worker.
+
+    The worker loads torch + YOLO once and stays alive between captures,
+    self-terminating after WORKER_IDLE_TIMEOUT seconds of inactivity.
+    The parent app never loads torch itself.
+
+    Returns (crop_bgr, confidence) or (None, 0.0).
+    """
+    _ensure_worker_running()
 
     tmpdir = tempfile.gettempdir()
     ts = int(time.time() * 1000)
     img_path = os.path.join(tmpdir, f"d2_capture_{os.getpid()}_{ts}.png")
     conf_path = img_path + ".conf"
 
+    global _LAST_REQUEST_TIME
+    _LAST_REQUEST_TIME = time.time()
+
     try:
-        python_exe = sys.executable
-        # --capture-worker must come AFTER the script path, otherwise
-        # Python interprets it as an option to the interpreter itself.
-        # Source mode: [python.exe, worker.py, --capture-worker, img, conf]
-        # Exe mode:    [exe.exe, --capture-worker, img, conf]
-        if getattr(sys, "frozen", False):
-            worker_args = [python_exe, "--capture-worker", img_path, conf_path]
-        else:
-            worker_args = [python_exe, worker_path, "--capture-worker", img_path, conf_path]
-        result = subprocess.run(
-            worker_args,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-
-        if result.returncode != 0:
-            raise SubprocessError(
-                f"subprocess exited with code {result.returncode}: "
-                f"{result.stderr.strip() if result.stderr else ''}"
-            )
-
-        if os.path.exists(img_path) and os.path.getsize(img_path) > 0:
-            img = cv2.imread(img_path)
-            conf = 0.0
-            if os.path.exists(conf_path):
-                try:
-                    with open(conf_path, "r") as f:
-                        conf = float(f.read().strip())
-                except Exception:
-                    pass
-            return img, conf
-
-        # Worker ran fine but produced no image (no tooltip found)
-        return None, 0.0
-
-    except subprocess.TimeoutExpired as e:
-        raise SubprocessError("subprocess timed out") from e
+        return _write_capture_request(img_path, conf_path, conf_thres)
     finally:
         for p in (img_path, conf_path):
             try:
@@ -410,10 +446,8 @@ def capture_tooltip(conf_thres=0.5):
     """Route tooltip capture based on config.
 
     If config['capture']['use_subprocess'] is True, runs the detector in a
-    subprocess so the parent never loads torch. Falls back to in-process
-    detection ONLY if the subprocess errors out (not when it correctly
-    finds no tooltip). Otherwise runs in-process (faster per-capture, but
-    memory stays resident).
+    persistent subprocess so the parent never loads torch. Falls back to
+    in-process detection ONLY if the subprocess errors out.
 
     Returns (crop_bgr, confidence) or (None, 0.0).
     """
@@ -422,19 +456,37 @@ def capture_tooltip(conf_thres=0.5):
         try:
             img, conf = capture_tooltip_via_subprocess(conf_thres)
         except SubprocessError as e:
-            # Subprocess itself failed (worker missing, timeout, crash).
-            # Fall back to in-process detection so the user isn't stranded.
-            # Log to error_log.txt since exe has no visible console.
-            _log_capture_error(f"subprocess error ({e}) - falling back to in-process (torch will load)")
+            _log_capture_error(
+                f"subprocess error ({e}) - falling back to in-process "
+                f"(torch will load)"
+            )
             print(f"[capture] subprocess error ({e}) - falling back to in-process")
             return capture_tooltip_yolo(conf_thres)
         if img is not None:
             return img, conf
-        # Worker ran fine but found no tooltip - return None, let GUI
-        # open manual crop. Don't load torch in parent.
         print("[capture] subprocess found no tooltip - no torch loaded in parent")
         return None, 0.0
     return capture_tooltip_yolo(conf_thres)
+
+
+def shutdown_worker():
+    """Terminate the persistent capture worker if it is running.
+
+    Called on app exit to ensure the worker process doesn't linger.
+    """
+    global _worker_process
+    if _worker_process is not None:
+        poll = _worker_process.poll()
+        if poll is None:
+            try:
+                _worker_process.terminate()
+                _worker_process.wait(timeout=5)
+            except Exception:
+                try:
+                    _worker_process.kill()
+                except Exception:
+                    pass
+        _worker_process = None
 
 
 # Sanity gates for detection boxes. Real D2R tooltips range from ~350x72 up

@@ -69,6 +69,7 @@ except Exception as _e:
 from config import load_config, get_trading_url
 from hotkeys import HotkeyManager, copy_image_to_clipboard
 from scanner import InventoryScanner
+from capture import shutdown_worker
 
 
 # Tooltip detector (v6): the canonical loader + capture logic live in
@@ -239,6 +240,7 @@ def main():
     _threading.excepthook = _thread_hook
     gui = GuiApp()
     gui.run()
+    shutdown_worker()
     return 0
 
 
