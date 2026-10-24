@@ -135,7 +135,12 @@ def capture_tooltip():
     if not game_window_found():
         return None, "Diablo II window not found - open the game first."
 
-    img, _conf = capture_tooltip()
+    try:
+        img, _conf = capture_tooltip()
+    except Exception as e:
+        print(f"[pricecheck] capture_tooltip raised: {e}", flush=True)
+        return None, "Tooltip detection crashed - hover an item and try again."
+    
     if img is None:
         why = last_yolo_capture.get("reason", "no tooltip detected")
         return None, (
