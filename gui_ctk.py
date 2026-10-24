@@ -785,6 +785,15 @@ class App:
 
 
 
+    def _on_window_resize(self, event):
+        """Keep idle timeout explainer wraplength at 70% of window width on resize."""
+        if (
+            event.widget == self.root
+            and hasattr(self, "idle_timeout_explainer")
+            and self.idle_timeout_explainer.winfo_exists()
+        ):
+            self.idle_timeout_explainer.configure(wraplength=int(event.width * 0.70))
+
     def _build_ui(self):
 
         self.root = ctk.CTk()
@@ -1831,13 +1840,17 @@ class App:
             text_color=("#18181B", "#F4F4F5"),
         ).pack(anchor="w", padx=6, pady=(10, 2))
 
-        ctk.CTkLabel(
+        self.idle_timeout_explainer = ctk.CTkLabel(
             self.opt_frame,
             text="Controls how long the capture worker stays loaded after last tooltip Capture.\n"
             "After it times out, the first capture will be slower while the worker reloads.",
             text_color=("#808080", "#808080"),
-            wraplength=int(780 * 0.70),
-        ).pack(anchor="w", padx=6, pady=(0, 4))
+            wraplength=int(self.root.winfo_width() * 0.70),
+        )
+        self.idle_timeout_explainer.pack(anchor="w", padx=6, pady=(0, 4))
+
+        # Keep wraplength at 70% of window width on resize
+        self.root.bind("<Configure>", self._on_window_resize)
 
         # Dropdown + custom entry side-by-side
         self.idle_timeout_row = ctk.CTkFrame(self.opt_frame, fg_color="transparent")
