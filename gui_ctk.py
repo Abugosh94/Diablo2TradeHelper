@@ -3257,7 +3257,7 @@ class App:
             except Exception:
                 full_img = None
 
-            # Focus the app window before showing the error popup
+            # Focus the app window before opening manual crop
             try:
                 self.root.focus_force()
                 self.root.lift()
@@ -3266,22 +3266,7 @@ class App:
             except Exception:
                 pass
 
-            # Show error popup explaining the failure
-            from tkinter import messagebox
-            try:
-                messagebox.showerror(
-                    "Tooltip not detected",
-                    "The ONNX detector did not find an item tooltip.\n\n"
-                    "Make sure you are hovering an item in Diablo II and try again.\n"
-                    "You can also use Manual Crop (F10) to select the area."
-                )
-            except Exception:
-                pass
-
             self.pc_status_var.set("Auto-capture failed - select the area manually...")
-
-            # Flush tkinter events after messagebox closes before opening crop dialog
-            self.root.update_idletasks()
 
             # Open manual crop with the pre-captured image
             if full_img is not None:
@@ -4250,23 +4235,12 @@ class App:
                         except Exception:
                             full_img = None
 
-                        # Focus the app window before showing the error popup
+                        # Focus the app window before opening manual crop
                         try:
                             self.root.focus_force()
                             self.root.lift()
                             self.root.attributes("-topmost", True)
                             self.root.attributes("-topmost", False)
-                        except Exception:
-                            pass
-
-                        # Show error popup explaining the failure
-                        from tkinter import messagebox
-                        try:
-                            messagebox.showerror(
-                                "Tooltip not detected",
-                                "The ONNX detector did not find an item tooltip.\n\n"
-                                "Make sure you are hovering an item in Diablo II and try again.\n"
-                                "You can also use Manual Crop (F10) to select the area.", parent=self.root)
                         except Exception:
                             pass
 
