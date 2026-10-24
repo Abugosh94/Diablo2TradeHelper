@@ -124,6 +124,10 @@ class App:
                 print(f"[list] capture_tooltip returned: img={best_crop is not None}, conf={best_conf}", flush=True)
 
                 if best_crop is None:
+                    # Capture full window first (in RAM) so manual crop can use it
+                    from capture import capture_full_window
+                    full_img, _rect = capture_full_window()
+
                     # ONNX failed or found no tooltip - show error and open manual crop
                     print("[list] No item tooltip detected - showing error and manual crop", flush=True)
                     import tkinter as tk
@@ -137,8 +141,19 @@ class App:
                         "You can also use Manual Crop (F10) to select the area."
                     )
                     root.destroy()
-                    # Open manual crop window so the user can select the area
-                    self.on_manual_crop_item()
+
+                    # Focus the app window after the popup is dismissed
+                    self.root.focus_force()
+                    self.root.lift()
+                    self.root.attributes("-topmost", True)
+                    self.root.attributes("-topmost", False)
+
+                    # Open manual crop with the pre-captured image
+                    if full_img is not None:
+                        self._manual_crop_blocking(
+                            "Auto-detect failed - drag the tooltip area", full_img)
+                    else:
+                        self._set_status("Diablo window not found - open the game first")
                     return
 
                 print(f"[list] Tooltip detected conf={best_conf:.2f} shape={best_crop.shape}", flush=True)

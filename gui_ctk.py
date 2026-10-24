@@ -3250,6 +3250,10 @@ class App:
     def _pc_on_result(self, success, message):
         # Handle tooltip detection failure - show error popup and open manual crop
         if message == "tooltip_not_detected":
+            # Capture full window first (in RAM) so manual crop can use it
+            from capture import capture_full_window
+            full_img, _rect = capture_full_window()
+
             import tkinter as tk
             from tkinter import messagebox
             root = tk.Tk()
@@ -3261,8 +3265,21 @@ class App:
                 "You can also use Manual Crop (F10) to select the area."
             )
             root.destroy()
+
             self.pc_status_var.set("Auto-capture failed - select the area manually...")
-            self.on_manual_crop_item()
+
+            # Focus the app window after the popup is dismissed
+            self.root.focus_force()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.root.attributes("-topmost", False)
+
+            # Open manual crop with the pre-captured image
+            if full_img is not None:
+                self._manual_crop_blocking(
+                    "Auto-detect failed - drag the tooltip area", full_img)
+            else:
+                self._set_status("Diablo window not found - open the game first")
             return
 
         # Disable stop button when price check completes
@@ -4211,6 +4228,10 @@ class App:
 
                         why = last_yolo_capture.get("reason", "no tooltip found")
 
+                        # Capture full window first (in RAM) so manual crop can use it
+                        from capture import capture_full_window
+                        full_img, _rect = capture_full_window()
+
                         # Show error popup explaining the failure
                         import tkinter as tk
                         from tkinter import messagebox
@@ -4227,9 +4248,19 @@ class App:
                         self._set_status(f"Auto-capture failed ({why}) - "
                                          "select the area manually...")
 
-                        img = self._manual_crop_blocking(
-                            f"Auto-detect failed ({why}) - drag the tooltip area")
+                        # Focus the app window after the popup is dismissed
+                        self.root.focus_force()
+                        self.root.lift()
+                        self.root.attributes("-topmost", True)
+                        self.root.attributes("-topmost", False)
 
+                        # Open manual crop with the pre-captured image
+                        if full_img is not None:
+                            img = self._manual_crop_blocking(
+                                f"Auto-detect failed ({why}) - drag the tooltip area", full_img)
+                        else:
+                            self._set_status("Diablo window not found - open the game first")
+                            img = None
                         manual = True
 
                 if img is None or img.size == 0:
@@ -4804,11 +4835,11 @@ class App:
 
 
 
-    def _manual_crop_blocking(self, title):
+    def _manual_crop_blocking(self, title, img=None):
 
-        from capture import capture_full_window
-
-        img, _rect = capture_full_window()
+        if img is None:
+            from capture import capture_full_window
+            img, _rect = capture_full_window()
 
         if img is None:
 
