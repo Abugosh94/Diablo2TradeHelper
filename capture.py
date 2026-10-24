@@ -315,6 +315,13 @@ def _find_worker_path():
     return None
 
 
+class SubprocessError(Exception):
+    """Raised when the capture subprocess itself fails (timeout, crash, etc.).
+    Distinct from 'worker ran fine but found no tooltip' which returns
+    (None, 0.0) normally."""
+    pass
+
+
 def capture_tooltip_via_subprocess(conf_thres=0.5):
     """Capture the tooltip using a separate Python process.
 
@@ -331,8 +338,7 @@ def capture_tooltip_via_subprocess(conf_thres=0.5):
     """
     worker_path = _find_worker_path()
     if worker_path is None:
-        print("[capture] capture_worker.py not found - falling back to in-process")
-        return capture_tooltip_yolo(conf_thres)
+        raise SubprocessError("capture_worker.py not found")
 
     tmpdir = tempfile.gettempdir()
     ts = int(time.time() * 1000)
@@ -357,9 +363,10 @@ def capture_tooltip_via_subprocess(conf_thres=0.5):
         )
 
         if result.returncode != 0:
-            print(f"[capture] subprocess exited with code {result.returncode}")
-            if result.stderr:
-                print(f"[capture] stderr: {result.stderr.strip()}")
+            raise SubprocessError(
+                f"subprocess exited with code {result.returncode}: "
+                f"{result.stderr.strip() if result.stderr else ''}"
+            )
 
         if os.path.exists(img_path) and os.path.getsize(img_path) > 0:
             img = cv2.imread(img_path)
@@ -371,10 +378,12 @@ def capture_tooltip_via_subprocess(conf_thres=0.5):
                 except Exception:
                     pass
             return img, conf
-    except subprocess.TimeoutExpired:
-        print("[capture] subprocess timed out")
-    except Exception as e:
-        print(f"[capture] subprocess error: {e}")
+
+        # Worker ran fine but produced no image (no tooltip found)
+        return None, 0.0
+
+    except subprocess.TimeoutExpired as e:
+        raise SubprocessError("subprocess timed out") from e
     finally:
         for p in (img_path, conf_path):
             try:
@@ -383,27 +392,33 @@ def capture_tooltip_via_subprocess(conf_thres=0.5):
             except Exception:
                 pass
 
-    return None, 0.0
-
 
 def capture_tooltip(conf_thres=0.5):
     """Route tooltip capture based on config.
 
     If config['capture']['use_subprocess'] is True, runs the detector in a
     subprocess so the parent never loads torch. Falls back to in-process
-    detection if the subprocess is unavailable or fails. Otherwise runs
-    in-process (faster per-capture, but memory stays resident).
+    detection ONLY if the subprocess errors out (not when it correctly
+    finds no tooltip). Otherwise runs in-process (faster per-capture, but
+    memory stays resident).
 
     Returns (crop_bgr, confidence) or (None, 0.0).
     """
     use_subprocess = _cfg.get("capture", {}).get("use_subprocess", False)
     if use_subprocess:
-        img, conf = capture_tooltip_via_subprocess(conf_thres)
+        try:
+            img, conf = capture_tooltip_via_subprocess(conf_thres)
+        except SubprocessError as e:
+            # Subprocess itself failed (worker missing, timeout, crash).
+            # Fall back to in-process detection so the user isn't stranded.
+            print(f"[capture] subprocess error ({e}) - falling back to in-process")
+            return capture_tooltip_yolo(conf_thres)
         if img is not None:
             return img, conf
-        # Subprocess failed or found nothing - fall back to in-process so
-        # the user isn't left with a broken function.
-        print("[capture] subprocess returned no result - falling back to in-process")
+        # Worker ran fine but found no tooltip - return None, let GUI
+        # open manual crop. Don't load torch in parent.
+        print("[capture] subprocess found no tooltip - no torch loaded in parent")
+        return None, 0.0
     return capture_tooltip_yolo(conf_thres)
 
 
