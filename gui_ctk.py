@@ -3268,15 +3268,13 @@ class App:
 
             self.pc_status_var.set("Auto-capture failed - select the area manually...")
 
-            # Open manual crop with the pre-captured image
-            if full_img is not None:
-                try:
-                    self._manual_crop_blocking(
-                        "Auto-detect failed - drag the tooltip area", full_img)
-                except Exception as e:
-                    print(f"[pricecheck] Manual crop failed: {e}", flush=True)
-            else:
-                self._set_status("Diablo window not found - open the game first")
+            # Open manual crop with the pre-captured image (or None to
+            # trigger a fresh capture inside _manual_crop_blocking)
+            try:
+                self._manual_crop_blocking(
+                    "Auto-detect failed - drag the tooltip area", full_img)
+            except Exception as e:
+                print(f"[pricecheck] Manual crop failed: {e}", flush=True)
             return
 
         # Disable stop button when price check completes
@@ -4247,16 +4245,13 @@ class App:
                         self._set_status(f"Auto-capture failed ({why}) - "
                                          "select the area manually...")
 
-                        # Open manual crop with the pre-captured image
-                        if full_img is not None:
-                            try:
-                                img = self._manual_crop_blocking(
-                                    f"Auto-detect failed ({why}) - drag the tooltip area", full_img)
-                            except Exception as e:
-                                print(f"[list] Manual crop failed: {e}", flush=True)
-                                img = None
-                        else:
-                            self._set_status("Diablo window not found - open the game first")
+                        # Open manual crop with the pre-captured image (or None to
+                        # trigger a fresh capture inside _manual_crop_blocking)
+                        try:
+                            img = self._manual_crop_blocking(
+                                f"Auto-detect failed ({why}) - drag the tooltip area", full_img)
+                        except Exception as e:
+                            print(f"[list] Manual crop failed: {e}", flush=True)
                             img = None
                         manual = True
 
