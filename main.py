@@ -102,6 +102,14 @@ class App:
         self.scanner = InventoryScanner()
         self.overlay_visible = True
         self.running = True
+        # Start the ONNX capture worker immediately so the model is loaded
+        # and ready when the user presses F9. The worker stays in a separate
+        # process; the parent never loads ONNX/torch itself.
+        from capture import _ensure_worker_running
+        try:
+            _ensure_worker_running()
+        except Exception as e:
+            print(f"[app] Warning: could not preload capture worker: {e}", flush=True)
 
     # -- Hotkey actions --------------------------------------------------------
 
@@ -116,8 +124,21 @@ class App:
                 print(f"[list] capture_tooltip returned: img={best_crop is not None}, conf={best_conf}", flush=True)
 
                 if best_crop is None:
-                    print("[list] No item tooltip detected - opening browser empty", flush=True)
-                    self._open_browser("")
+                    # ONNX failed or found no tooltip - show error and open manual crop
+                    print("[list] No item tooltip detected - showing error and manual crop", flush=True)
+                    import tkinter as tk
+                    from tkinter import messagebox
+                    root = tk.Tk()
+                    root.withdraw()
+                    messagebox.showerror(
+                        "Tooltip not detected",
+                        "The ONNX detector did not find an item tooltip.\n\n"
+                        "Make sure you are hovering an item in Diablo II and try again.\n"
+                        "You can also use Manual Crop (F10) to select the area."
+                    )
+                    root.destroy()
+                    # Open manual crop window so the user can select the area
+                    self.on_manual_crop_item()
                     return
 
                 print(f"[list] Tooltip detected conf={best_conf:.2f} shape={best_crop.shape}", flush=True)

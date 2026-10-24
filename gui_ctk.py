@@ -247,6 +247,8 @@ class CropDialog(ctk.CTkToplevel):
         pil = Image.fromarray(rgb).resize((dw, dh))
 
         self._photo = ImageTk.PhotoImage(pil)
+        # Keep a reference to the PIL image so PhotoImage data isn't garbage collected
+        self._pil_image = pil
 
 
 
@@ -4193,12 +4195,23 @@ class App:
 
                         why = last_yolo_capture.get("reason", "no tooltip found")
 
-                        self._set_status(f"Auto-capture failed ({why}) - "
+                        # Show error popup explaining the failure
+                        import tkinter as tk
+                        from tkinter import messagebox
+                        root = tk.Tk()
+                        root.withdraw()
+                        messagebox.showerror(
+                            "Tooltip not detected",
+                            "The ONNX detector did not find an item tooltip.\n\n"
+                            "Make sure you are hovering an item in Diablo II and try again.\n"
+                            "You can also use Manual Crop (F10) to select the area."
+                        )
+                        root.destroy()
 
+                        self._set_status(f"Auto-capture failed ({why}) - "
                                          "select the area manually...")
 
                         img = self._manual_crop_blocking(
-
                             f"Auto-detect failed ({why}) - drag the tooltip area")
 
                         manual = True
