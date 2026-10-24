@@ -3257,24 +3257,10 @@ class App:
             except Exception:
                 full_img = None
 
-            # Focus the app window before opening manual crop
-            try:
-                self.root.focus_force()
-                self.root.lift()
-                self.root.attributes("-topmost", True)
-                self.root.attributes("-topmost", False)
-            except Exception:
-                pass
-
-            self.pc_status_var.set("Auto-capture failed - select the area manually...")
-
-            # Open manual crop with the pre-captured image (or None to
-            # trigger a fresh capture inside _manual_crop_blocking)
-            try:
-                self._manual_crop_blocking(
-                    "Auto-detect failed - drag the tooltip area", full_img)
-            except Exception as e:
-                print(f"[pricecheck] Manual crop failed: {e}", flush=True)
+            # Schedule all GUI operations on the main thread (this callback
+            # runs in a background thread, and tkinter must be accessed from
+            # the main thread)
+            self.root.after(0, lambda: self._pc_on_tooltip_not_detected(full_img))
             return
 
         # Disable stop button when price check completes
@@ -3337,6 +3323,45 @@ class App:
 
 
 
+
+    def _pc_on_tooltip_not_detected(self, full_img):
+        """Handle tooltip detection failure on the main thread.
+
+        Shows an error popup and opens the manual crop dialog with the
+        pre-captured image. Called via self.root.after() from the
+        capture-worker thread.
+        """
+        # Focus the app window before showing the error popup
+        try:
+            self.root.focus_force()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.root.attributes("-topmost", False)
+        except Exception:
+            pass
+
+        # Show error popup explaining the failure
+        from tkinter import messagebox
+        try:
+            messagebox.showerror(
+                "Tooltip not detected",
+                "The ONNX detector did not find an item tooltip.\n\n"
+                "Make sure you are hovering an item in Diablo II and try again.\n"
+                "You can also use Manual Crop (F10) to select the area.",
+                parent=self.root
+            )
+        except Exception:
+            pass
+
+        self.pc_status_var.set("Auto-capture failed - select the area manually...")
+
+        # Open manual crop with the pre-captured image (or None to
+        # trigger a fresh capture inside _manual_crop_blocking)
+        try:
+            self._manual_crop_blocking(
+                "Auto-detect failed - drag the tooltip area", full_img)
+        except Exception as e:
+            print(f"[pricecheck] Manual crop failed: {e}", flush=True)
 
     def _create_ai_response_panel(self):
         """Create the AI response panel as a separate CTkToplevel window.
@@ -4233,27 +4258,11 @@ class App:
                         except Exception:
                             full_img = None
 
-                        # Focus the app window before opening manual crop
-                        try:
-                            self.root.focus_force()
-                            self.root.lift()
-                            self.root.attributes("-topmost", True)
-                            self.root.attributes("-topmost", False)
-                        except Exception:
-                            pass
-
-                        self._set_status(f"Auto-capture failed ({why}) - "
-                                         "select the area manually...")
-
-                        # Open manual crop with the pre-captured image (or None to
-                        # trigger a fresh capture inside _manual_crop_blocking)
-                        try:
-                            img = self._manual_crop_blocking(
-                                f"Auto-detect failed ({why}) - drag the tooltip area", full_img)
-                        except Exception as e:
-                            print(f"[list] Manual crop failed: {e}", flush=True)
-                            img = None
-                        manual = True
+                        # Schedule GUI operations on main thread (hotkey listener
+                        # runs in a background thread, tkinter must be accessed
+                        # from main thread)
+                        self.root.after(0, lambda: self._on_quick_list_no_tooltip(why, full_img))
+                        return
 
                 if img is None or img.size == 0:
 
@@ -4285,8 +4294,48 @@ class App:
 
 
 
-    def on_manual_crop_item(self):
+    def _on_quick_list_no_tooltip(self, why, full_img):
+        """Handle tooltip detection failure on the main thread.
 
+        Shows an error popup and opens the manual crop dialog with the
+        pre-captured image. Called via self.root.after() from the
+        hotkey listener thread.
+        """
+        # Focus the app window before showing the error popup
+        try:
+            self.root.focus_force()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.root.attributes("-topmost", False)
+        except Exception:
+            pass
+
+        # Show error popup explaining the failure
+        from tkinter import messagebox
+        try:
+            messagebox.showerror(
+                "Tooltip not detected",
+                "The ONNX detector did not find an item tooltip.\n\n"
+                "Make sure you are hovering an item in Diablo II and try again.\n"
+                "You can also use Manual Crop (F10) to select the area.",
+                parent=self.root
+            )
+        except Exception:
+            pass
+
+        self._set_status(f"Auto-capture failed ({why}) - "
+                         "select the area manually...")
+
+        # Open manual crop with the pre-captured image (or None to
+        # trigger a fresh capture inside _manual_crop_blocking)
+        try:
+            self._manual_crop_blocking(
+                f"Auto-detect failed ({why}) - drag the tooltip area", full_img)
+        except Exception as e:
+            print(f"[list] Manual crop failed: {e}", flush=True)
+
+
+    def on_manual_crop_item(self):
         def _run():
 
             img = self._manual_crop_blocking("Manual crop - drag the tooltip area to post")
