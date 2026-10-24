@@ -1833,8 +1833,8 @@ class App:
 
         ctk.CTkLabel(
             self.opt_frame,
-            text="Controls how long the capture worker stays loaded after last tooltip Capture."
-                 " After it times out, the first capture will be slower while the worker reloads.",
+            text="Controls how long the capture worker stays loaded after last tooltip Capture. "
+            "After it times out, the first capture will be slower while the worker reloads.",
             text_color=("#808080", "#808080"),
             wraplength=420,
         ).pack(anchor="w", padx=6, pady=(0, 4))
