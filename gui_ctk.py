@@ -258,7 +258,7 @@ class CropDialog(ctk.CTkToplevel):
 
         self.canvas = ctk.CTkCanvas(self, width=dw, height=dh,
 
-                                    cursor="crosshair", highlightthickness=0, bg=("#FFFFFF", "#18181B"))
+                                    cursor="crosshair", highlightthickness=0)
 
         self.canvas.create_image(0, 0, anchor="nw", image=self._photo)
 
