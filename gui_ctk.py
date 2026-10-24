@@ -761,9 +761,11 @@ class App:
         """Show/hide the custom minutes entry next to the dropdown."""
         if hasattr(self, "idle_timeout_custom_entry"):
             if self.idle_timeout_var.get() == "Custom":
-                self.idle_timeout_custom_entry.pack(side="left", padx=(6, 0))
+                self.idle_timeout_custom_entry.pack(side="left", padx=(6, 2))
+                self.idle_timeout_mins_label.pack(side="left", padx=(0, 6))
             else:
                 self.idle_timeout_custom_entry.pack_forget()
+                self.idle_timeout_mins_label.pack_forget()
 
     def _apply_idle_timeout_custom(self):
         """Read the custom minutes entry and save it."""
@@ -1870,6 +1872,14 @@ class App:
         )
         self.idle_timeout_custom_entry.pack_forget()  # hidden until "Custom" selected
         self.idle_timeout_custom_entry.bind("<Return>", lambda e: self._apply_idle_timeout_custom())
+
+        self.idle_timeout_mins_label = ctk.CTkLabel(
+            self.idle_timeout_row,
+            text="Mins",
+            text_color=("#18181B", "#F4F4F5"),
+        )
+        self.idle_timeout_mins_label.pack_forget()  # hidden until "Custom" selected
+
         self._toggle_idle_timeout_custom()
 
         ctk.CTkButton(self.opt_frame, text="Apply",
