@@ -761,9 +761,9 @@ class App:
         """Show/hide the custom minutes entry based on dropdown selection."""
         if hasattr(self, "idle_timeout_custom_entry"):
             if self.idle_timeout_var.get() == "Custom":
-                self.idle_timeout_custom_entry.configure(state="normal")
+                self.idle_timeout_custom_entry.pack(anchor="w", padx=6, pady=(2, 6))
             else:
-                self.idle_timeout_custom_entry.configure(state="disabled")
+                self.idle_timeout_custom_entry.pack_forget()
 
     def _apply_idle_timeout_custom(self):
         """Read the custom minutes entry and save it."""
@@ -1822,9 +1822,30 @@ class App:
             variable=self.save_captures_var).pack(
             anchor="w", padx=6, pady=(2, 6))
 
-        # Worker idle timeout dropdown
-        self.idle_timeout_var = ctk.StringVar(
-            value=self._format_idle_timeout(self.cfg.get("capture", {}).get("worker_idle_timeout", 300)))
+        # Worker idle timeout label
+        ctk.CTkLabel(
+            self.opt_frame,
+            text="YOLO capture worker idle timeout:",
+            text_color=("#18181B", "#F4F4F5"),
+            font=("Segoe UI", 11),
+        ).pack(anchor="w", padx=6, pady=(10, 2))
+
+        ctk.CTkLabel(
+            self.opt_frame,
+            text="How long the capture worker stays loaded after the last tooltip capture.",
+            text_color=("#808080", "#808080"),
+            font=("Segoe UI", 10),
+        ).pack(anchor="w", padx=6, pady=(0, 4))
+
+        _saved_timeout = self.cfg.get("capture", {}).get("worker_idle_timeout", 300)
+        _saved_label = self._format_idle_timeout(_saved_timeout)
+        _preset_labels = ["1 min", "3 mins", "5 mins", "10 mins", "15 mins", "30 mins", "45 mins", "1 hour", "Custom"]
+        if _saved_label in _preset_labels:
+            self.idle_timeout_var = ctk.StringVar(value=_saved_label)
+        else:
+            # Non-standard custom value: show "Custom" and put raw minutes in entry
+            self.idle_timeout_var = ctk.StringVar(value="Custom")
+            self.idle_timeout_custom_var = ctk.StringVar(value=str(_saved_timeout // 60))
 
         self.idle_timeout_combo = ctk.CTkOptionMenu(
             self.opt_frame,
@@ -1833,18 +1854,19 @@ class App:
             width=140,
             command=self._on_idle_timeout_changed,
         )
-        self.idle_timeout_combo.pack(anchor="w", padx=6, pady=(6, 0))
+        self.idle_timeout_combo.pack(anchor="w", padx=6, pady=(0, 4))
 
+        # Custom minutes entry (shown only when "Custom" is selected)
         self.idle_timeout_custom_var = ctk.StringVar(value="")
         self.idle_timeout_custom_entry = ctk.CTkEntry(
             self.opt_frame,
             textvariable=self.idle_timeout_custom_var,
-            placeholder_text="Custom minutes",
+            placeholder_text="minutes",
             width=140,
             fg_color=("#E4E4E7", "#27272A"),
             border_color=("#E4E4E7", "#27272A"),
         )
-        self.idle_timeout_custom_entry.pack(anchor="w", padx=6, pady=(2, 6))
+        self.idle_timeout_custom_entry.pack_forget()  # hidden until "Custom" selected
         self.idle_timeout_custom_entry.bind("<Return>", lambda e: self._apply_idle_timeout_custom())
         self._toggle_idle_timeout_custom()
 
