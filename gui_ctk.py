@@ -3252,6 +3252,22 @@ class App:
             self._status_dot_after_id = None
 
     def _pc_on_result(self, success, message):
+        # Handle tooltip detection failure - show error popup and open manual crop
+        if message == "tooltip_not_detected":
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror(
+                "Tooltip not detected",
+                "The ONNX detector did not find an item tooltip.\n\n"
+                "Make sure you are hovering an item in Diablo II and try again.\n"
+                "You can also use Manual Crop (F10) to select the area."
+            )
+            root.destroy()
+            self.pc_status_var.set("Auto-capture failed - select the area manually...")
+            self.on_manual_crop_item()
+            return
 
         # Disable stop button when price check completes
         if hasattr(self, "pc_api_stop_btn") and self.pc_api_stop_btn:

@@ -221,10 +221,8 @@ class PriceChecker:
         pil_img, err = capture_tooltip()
         if err:
             print(f"[pricecheck] Capture failed: {err}")
-            # Still proceed to open the redirect URL so the user isn't stranded.
-            # We'll paste an empty/missing image notice instead.
-            pil_img = None
-            # Don't return - continue to open the browser so user can manually crop
+            on_result(False, "tooltip_not_detected")
+            return
 
         if pil_img is not None:
             # Copy the screenshot to the clipboard so the user can paste it
