@@ -5,6 +5,10 @@ import threading
 import time
 from ctypes import wintypes
 
+# Keep references to ctypes callbacks alive to prevent garbage collection,
+# which can cause EnumWindows callbacks to fail in PyInstaller embedded Python.
+_ctypes_callbacks = []
+
 from pynput import keyboard, mouse
 
 from config import load_config
@@ -284,8 +288,7 @@ def _find_matching_window(user32, hints, current_pid):
     any of the hints (and belongs to a different process)."""
     found = []
 
-    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    def _enum_cb(hwnd, _lparam):
+    def _enum_cb_impl(hwnd, _lparam):
         if not user32.IsWindowVisible(hwnd):
             return True
         length = user32.GetWindowTextLengthW(hwnd)
@@ -300,6 +303,11 @@ def _find_matching_window(user32, hints, current_pid):
             if pid.value != current_pid:
                 found.append(hwnd)
         return True
+
+    _enum_cb = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)(
+        _enum_cb_impl
+    )
+    _ctypes_callbacks.append(_enum_cb)
 
     try:
         user32.EnumWindows(_enum_cb, 0)
