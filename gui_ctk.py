@@ -4249,9 +4249,6 @@ class App:
                         why = last_yolo_capture.get("reason", "no tooltip found")
 
                         # Capture full window first (in RAM) so manual crop can use it
-                        why = last_yolo_capture.get("reason", "no tooltip found")
-
-                        # Capture full window first (in RAM) so manual crop can use it
                         from capture import capture_full_window
                         try:
                             full_img, _rect = capture_full_window()
