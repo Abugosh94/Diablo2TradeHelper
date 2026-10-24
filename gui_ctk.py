@@ -250,10 +250,6 @@ class CropDialog(ctk.CTkToplevel):
         # Keep a reference to the PIL image so PhotoImage data isn't garbage collected
         self._pil_image = pil
 
-        # Debug
-        import numpy as np
-        print(f"[crop] Dialog canvas size={dw}x{dh}, image mean={np.array(pil).mean():.1f}")
-
 
 
         self.canvas = ctk.CTkCanvas(self, width=dw, height=dh,
@@ -4813,13 +4809,6 @@ class App:
         from capture import capture_full_window
 
         img, _rect = capture_full_window()
-
-        # Debug: check image content
-        import numpy as np
-        mean_val = float(img.mean()) if img.size > 0 else -1
-        print(f"[crop] Captured image shape={img.shape}, mean={mean_val:.1f}")
-        if mean_val < 5.0:
-            print(f"[crop] WARNING: Captured image is nearly black (mean={mean_val:.1f})")
 
         if img is None:
 
