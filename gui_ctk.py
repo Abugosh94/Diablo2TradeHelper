@@ -719,6 +719,8 @@ class App:
     @staticmethod
     def _format_idle_timeout(seconds: int) -> str:
         """Convert seconds to a human-readable label for the dropdown."""
+        if seconds == 0:
+            return "Never"
         if seconds < 60:
             return f"{seconds} sec"
         minutes = seconds // 60
@@ -737,6 +739,8 @@ class App:
         label = label.strip().lower()
         if label == "custom":
             return -1  # sentinel; handled by custom entry
+        if label == "never":
+            return 0  # never timeout
         try:
             num = int("".join(c for c in label if c.isdigit()))
         except ValueError:
@@ -1858,7 +1862,7 @@ class App:
 
         _saved_timeout = self.cfg.get("capture", {}).get("worker_idle_timeout", 300)
         _saved_label = self._format_idle_timeout(_saved_timeout)
-        _preset_labels = ["1 min", "3 mins", "5 mins", "10 mins", "15 mins", "30 mins", "45 mins", "1 hour", "Custom"]
+        _preset_labels = ["1 min", "3 mins", "5 mins", "10 mins", "15 mins", "30 mins", "45 mins", "1 hour", "Never", "Custom"]
         if _saved_label in _preset_labels:
             self.idle_timeout_var = ctk.StringVar(value=_saved_label)
         else:
@@ -1869,7 +1873,7 @@ class App:
         self.idle_timeout_combo = ctk.CTkOptionMenu(
             self.idle_timeout_row,
             variable=self.idle_timeout_var,
-            values=["1 min", "3 mins", "5 mins", "10 mins", "15 mins", "30 mins", "45 mins", "1 hour", "Custom"],
+            values=["1 min", "3 mins", "5 mins", "10 mins", "15 mins", "30 mins", "45 mins", "1 hour", "Never", "Custom"],
             width=140,
             command=self._on_idle_timeout_changed,
         )

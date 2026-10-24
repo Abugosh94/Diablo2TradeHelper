@@ -213,7 +213,7 @@ def main():
     while True:
         now = time.time()
         idle_timeout = _read_idle_timeout()
-        if now - last_activity > idle_timeout:
+        if idle_timeout > 0 and now - last_activity > idle_timeout:
             print(f"[capture_worker] Idle timeout ({idle_timeout}s) - exiting",
                   file=sys.stderr, flush=True)
             break
