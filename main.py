@@ -120,6 +120,9 @@ class App:
 
                 if best_crop is None:
                     print("[list] No item tooltip detected - hover an item and try again")
+                    # Still open the trading site so the user can manually crop
+                    # instead of being stranded with no browser action.
+                    self._open_browser("")
                     return
 
                 print(f"[list] Tooltip detected with confidence: {best_conf:.2f}")
