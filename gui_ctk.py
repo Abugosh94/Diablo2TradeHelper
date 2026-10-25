@@ -714,92 +714,6 @@ class App:
 
         save_config(self.cfg)
 
-    # ------------------------------------------------------------------
-    # Worker idle timeout helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _format_idle_timeout(seconds: int) -> str:
-        """Convert seconds to a human-readable label for the dropdown."""
-        if seconds == 0:
-            return "Never"
-        if seconds < 60:
-            return f"{seconds} sec"
-        minutes = seconds // 60
-        if minutes == 1:
-            return "1 min"
-        if minutes < 60:
-            return f"{minutes} mins"
-        hours = minutes // 60
-        if hours == 1:
-            return "1 hour"
-        return f"{hours} hours"
-
-    @staticmethod
-    def _parse_idle_timeout(label: str) -> int:
-        """Convert a dropdown label back to seconds."""
-        label = label.strip().lower()
-        if label == "custom":
-            return -1  # sentinel; handled by custom entry
-        if label == "never":
-            return 0  # never timeout
-        try:
-            num = int("".join(c for c in label if c.isdigit()))
-        except ValueError:
-            return 300
-        if "hour" in label:
-            return num * 3600
-        return num * 60
-
-    def _on_idle_timeout_changed(self, selection: str):
-        """Handle dropdown selection changes."""
-        self._toggle_idle_timeout_custom()
-        if selection == "Custom":
-            return
-        seconds = self._parse_idle_timeout(selection)
-        self.cfg.setdefault("capture", {})["worker_idle_timeout"] = seconds
-        save_config(self.cfg)
-        from capture import set_worker_idle_timeout
-        set_worker_idle_timeout(seconds)
-        self._set_status(f"Worker idle timeout set to {selection}")
-
-    def _toggle_idle_timeout_custom(self):
-        """Show/hide the custom minutes entry next to the dropdown."""
-        if hasattr(self, "idle_timeout_custom_entry"):
-            if self.idle_timeout_var.get() == "Custom":
-                self.idle_timeout_custom_entry.pack(side="left", padx=(6, 2))
-                self.idle_timeout_mins_label.pack(side="left", padx=(0, 6))
-            else:
-                self.idle_timeout_custom_entry.pack_forget()
-                self.idle_timeout_mins_label.pack_forget()
-
-    def _apply_idle_timeout_custom(self):
-        """Read the custom minutes entry and save it."""
-        try:
-            minutes = int(self.idle_timeout_custom_var.get().strip())
-            if minutes < 1:
-                minutes = 1
-        except ValueError:
-            minutes = 300
-        seconds = minutes * 60
-        self.cfg.setdefault("capture", {})["worker_idle_timeout"] = seconds
-        save_config(self.cfg)
-        from capture import set_worker_idle_timeout
-        set_worker_idle_timeout(seconds)
-        self.idle_timeout_var.set(self._format_idle_timeout(seconds))
-        self._set_status(f"Worker idle timeout set to {minutes} minute(s)")
-
-
-
-    def _on_window_resize(self, event):
-        """Keep idle timeout explainer wraplength at 70% of window width on resize."""
-        if (
-            event.widget == self.root
-            and hasattr(self, "idle_timeout_explainer")
-            and self.idle_timeout_explainer.winfo_exists()
-        ):
-            self.idle_timeout_explainer.configure(wraplength=int(event.width * 0.70))
-
     def _build_ui(self):
 
         self.root = ctk.CTk()
@@ -1839,68 +1753,6 @@ class App:
             variable=self.save_captures_var).pack(
             anchor="w", padx=6, pady=(2, 6))
 
-        # Worker idle timeout label
-        ctk.CTkLabel(
-            self.opt_frame,
-            text="ONNX capture worker idle timeout:",
-            text_color=("#18181B", "#F4F4F5"),
-        ).pack(anchor="w", padx=6, pady=(10, 2))
-
-        self.idle_timeout_explainer = ctk.CTkLabel(
-            self.opt_frame,
-            text="Controls how long the capture worker stays loaded after last tooltip Capture.\n"
-            "After it times out, the first capture will be slower while the worker reloads.",
-            text_color=("#808080", "#808080"),
-            wraplength=int(self.root.winfo_width() * 0.70),
-        )
-        self.idle_timeout_explainer.pack(anchor="w", padx=6, pady=(0, 4))
-
-        # Keep wraplength at 70% of window width on resize
-        self.root.bind("<Configure>", self._on_window_resize)
-
-        # Dropdown + custom entry side-by-side
-        self.idle_timeout_row = ctk.CTkFrame(self.opt_frame, fg_color="transparent")
-        self.idle_timeout_row.pack(anchor="w", padx=6, pady=(0, 4))
-
-        _saved_timeout = self.cfg.get("capture", {}).get("worker_idle_timeout", 300)
-        _saved_label = self._format_idle_timeout(_saved_timeout)
-        _preset_labels = ["1 min", "3 mins", "5 mins", "10 mins", "15 mins", "30 mins", "45 mins", "1 hour", "Never", "Custom"]
-        if _saved_label in _preset_labels:
-            self.idle_timeout_var = ctk.StringVar(value=_saved_label)
-        else:
-            # Non-standard custom value: show "Custom" and put raw minutes in entry
-            self.idle_timeout_var = ctk.StringVar(value="Custom")
-            self.idle_timeout_custom_var = ctk.StringVar(value=str(_saved_timeout // 60))
-
-        self.idle_timeout_combo = ctk.CTkOptionMenu(
-            self.idle_timeout_row,
-            variable=self.idle_timeout_var,
-            values=["1 min", "3 mins", "5 mins", "10 mins", "15 mins", "30 mins", "45 mins", "1 hour", "Never", "Custom"],
-            width=140,
-            command=self._on_idle_timeout_changed,
-        )
-        self.idle_timeout_combo.pack(side="left", padx=(0, 6))
-
-        self.idle_timeout_custom_var = ctk.StringVar(value="")
-        self.idle_timeout_custom_entry = ctk.CTkEntry(
-            self.idle_timeout_row,
-            textvariable=self.idle_timeout_custom_var,
-            placeholder_text="minutes",
-            width=100,
-            fg_color=("#E4E4E7", "#27272A"),
-            border_color=("#E4E4E7", "#27272A"),
-        )
-        self.idle_timeout_custom_entry.pack_forget()  # hidden until "Custom" selected
-        self.idle_timeout_custom_entry.bind("<Return>", lambda e: self._apply_idle_timeout_custom())
-
-        self.idle_timeout_mins_label = ctk.CTkLabel(
-            self.idle_timeout_row,
-            text="Mins",
-            text_color=("#18181B", "#F4F4F5"),
-        )
-        self.idle_timeout_mins_label.pack_forget()  # hidden until "Custom" selected
-
-        self._toggle_idle_timeout_custom()
 
         ctk.CTkButton(self.opt_frame, text="Apply",
 
@@ -3358,10 +3210,54 @@ class App:
         # Open manual crop with the pre-captured image (or None to
         # trigger a fresh capture inside _manual_crop_blocking)
         try:
-            self._manual_crop_blocking(
+            crop = self._manual_crop_blocking(
                 "Auto-detect failed - drag the tooltip area", full_img)
         except Exception as e:
             print(f"[pricecheck] Manual crop failed: {e}", flush=True)
+            crop = None
+
+        if crop is not None and crop.size != 0:
+            # Redirect the cropped screenshot to price check
+            try:
+                import cv2
+                from PIL import Image
+
+                pc_cfg = self.price_checker.get_config()
+                variables = {
+                    "PLATFORM": pc_cfg.get("platform", "PC"),
+                    "GAME_MODE": pc_cfg.get("ladder_status", "Ladder"),
+                    "MODE_TYPE": pc_cfg.get("hardcore_status", "Softcore"),
+                    "TARGET_MARKETPLACES": ", ".join(
+                        pc_cfg.get("marketplaces", list(DEFAULT_MARKETPLACES))
+                    ),
+                    "PRICE_HISTORY_WINDOW": pc_cfg.get(
+                        "timeframe", "Last 7 Days"
+                    ),
+                }
+                self.price_checker._price_check_stop = False
+                self.price_checker._price_check_conn = None
+                self.pc_status_var.set(
+                    "Manual crop received - sending to price check..."
+                )
+
+                def _on_result(success, message):
+                    self.root.after(0, lambda: self._pc_on_result(success, message))
+
+                self.price_checker.run(
+                    self.pc_mode_var.get(),
+                    self._pc_ai_key_by_label.get(
+                        self.pc_ai_tool_var.get(), "gemini"
+                    ),
+                    self.pc_api_key_var.get().strip().replace("\n", "").replace("\r", ""),
+                    variables,
+                    _on_result,
+                    pil_img=Image.fromarray(
+                        cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+                    ),
+                )
+            except Exception as e:
+                print(f"[pricecheck] Redirect to price check failed: {e}", flush=True)
+                self._set_status(f"Price check redirect failed: {e}")
 
     def _create_ai_response_panel(self):
         """Create the AI response panel as a separate CTkToplevel window.
@@ -4326,24 +4222,187 @@ class App:
         # Open manual crop with the pre-captured image (or None to
         # trigger a fresh capture inside _manual_crop_blocking)
         try:
-            self._manual_crop_blocking(
+            crop = self._manual_crop_blocking(
                 f"Auto-detect failed ({why}) - drag the tooltip area", full_img)
         except Exception as e:
             print(f"[list] Manual crop failed: {e}", flush=True)
+            crop = None
 
+        if crop is not None and crop.size != 0:
+            # Redirect the cropped screenshot to quick sell / post
+            self._post_crop(
+                crop,
+                f"Manual crop ({crop.shape[1]}x{crop.shape[0]}px) - quick sell",
+            )
+
+
+    def _show_crop_destination_dialog(self):
+        """Show a modal dialog asking where to send the manual crop screenshot.
+
+        Returns True for Price Check, False for Quick Sell, None if cancelled.
+        """
+        result = {}
+
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Manual Crop")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Apply app logo to the top bar
+        try:
+            dialog.iconbitmap(resource_path("Logo.ico"))
+        except Exception:
+            pass
+
+        dialog.update_idletasks()
+        w, h = 420, 220
+        x = (dialog.winfo_screenwidth() // 2) - (w // 2)
+        y = (dialog.winfo_screenheight() // 2) - (h // 2)
+        dialog.geometry(f"{w}x{h}+{x}+{y}")
+
+        # Bring to front and focus after the window is mapped
+        dialog.attributes("-topmost", True)
+        dialog.after_idle(lambda: dialog.focus_force())
+        dialog.after_idle(lambda: dialog.attributes("-topmost", False))
+
+        label = ctk.CTkLabel(
+            dialog,
+            text="Use this screenshot for:\n\nPrice Check or Quick Sell/Post?",
+            font=ctk.CTkFont(size=14),
+        )
+        label.pack(pady=(30, 10))
+
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(pady=10)
+
+        def on_price():
+            result["choice"] = "price"
+            dialog.destroy()
+
+        def on_quick():
+            result["choice"] = "quick"
+            dialog.destroy()
+
+        def on_close():
+            result["choice"] = None
+            dialog.destroy()
+
+        btn_price = ctk.CTkButton(
+            btn_frame, text="Price Check", command=on_price, width=130
+        )
+        btn_price.pack(side="left", padx=12)
+
+        btn_quick = ctk.CTkButton(
+            btn_frame, text="Quick Sell", command=on_quick, width=130
+        )
+        btn_quick.pack(side="left", padx=12)
+
+        dialog.protocol("WM_DELETE_WINDOW", on_close)
+
+        # Block until the dialog is dismissed (runs on the main thread)
+        self.root.wait_window(dialog)
+        return result.get("choice")
 
     def on_manual_crop_item(self):
         def _run():
 
-            img = self._manual_crop_blocking("Manual crop - drag the tooltip area to post")
+            # Step 0: Capture screenshot from the game first (before asking
+            # where to send it).
+            try:
+                from capture import capture_full_window
 
-            if img is None or img.size == 0:
+                img, _rect = capture_full_window()
+            except Exception as e:
+                print(f"[manual crop] Capture failed: {e}", flush=True)
+                img = None
+
+            if img is None:
+                self._set_status("Diablo window not found - open the game first")
+                return
+
+            # Step 1: Ask user whether to use the screenshot for Price or
+            # Quick Sell/Post (only when triggered manually via F10).
+            choice = {}
+            done = threading.Event()
+
+            def _ask():
+                try:
+                    choice["dest"] = self._show_crop_destination_dialog()
+                except Exception:
+                    choice["dest"] = None
+                finally:
+                    done.set()
+
+            self.root.after(0, _ask)
+            done.wait(timeout=30)
+
+            if not done.is_set():
+                self._set_status("Manual crop cancelled - no selection made.")
+                return
+
+            dest = choice.get("dest")
+            if dest is None:
+                self._set_status("Cancelled - nothing was posted.")
+                return
+
+            use_price = dest == "price"
+
+            # Step 2: Manual crop with the pre-captured game screenshot
+            crop = self._manual_crop_blocking(
+                "Manual crop - drag the tooltip area to post", img=img
+            )
+
+            if crop is None or crop.size == 0:
 
                 self._set_status("Cancelled - nothing was posted.")
 
                 return
 
-            self._post_crop(img, f"Manual crop ({img.shape[1]}x{img.shape[0]}px)")
+            if use_price:
+                # Redirect the cropped screenshot to price check
+                try:
+                    import cv2
+                    from PIL import Image
+
+                    pc_cfg = self.price_checker.get_config()
+                    variables = {
+                        "PLATFORM": pc_cfg.get("platform", "PC"),
+                        "GAME_MODE": pc_cfg.get("ladder_status", "Ladder"),
+                        "MODE_TYPE": pc_cfg.get("hardcore_status", "Softcore"),
+                        "TARGET_MARKETPLACES": ", ".join(
+                            pc_cfg.get("marketplaces", list(DEFAULT_MARKETPLACES))
+                        ),
+                        "PRICE_HISTORY_WINDOW": pc_cfg.get(
+                            "timeframe", "Last 7 Days"
+                        ),
+                    }
+                    self.price_checker._price_check_stop = False
+                    self.price_checker._price_check_conn = None
+                    self.pc_status_var.set(
+                        "Manual crop received - sending to price check..."
+                    )
+
+                    def _on_result(success, message):
+                        self.root.after(0, lambda: self._pc_on_result(success, message))
+
+                    self.price_checker.run(
+                        self.pc_mode_var.get(),
+                        self._pc_ai_key_by_label.get(
+                            self.pc_ai_tool_var.get(), "gemini"
+                        ),
+                        self.pc_api_key_var.get().strip().replace("\n", "").replace("\r", ""),
+                        variables,
+                        _on_result,
+                        pil_img=Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)),
+                    )
+                except Exception as e:
+                    print(f"[manual crop] Price check redirect failed: {e}", flush=True)
+                    self._set_status(f"Price check redirect failed: {e}")
+            else:
+                # Redirect the cropped screenshot to quick sell / post
+                self._post_crop(
+                    crop, f"Manual crop ({crop.shape[1]}x{crop.shape[0]}px)"
+                )
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -4657,15 +4716,6 @@ class App:
 
         self.cfg.setdefault("scan", {})["save_captures"] = bool(self.save_captures_var.get())
 
-        # Worker idle timeout: if Custom is selected, use the custom entry value
-        if self.idle_timeout_var.get() == "Custom":
-            self._apply_idle_timeout_custom()
-        else:
-            seconds = self._parse_idle_timeout(self.idle_timeout_var.get())
-            self.cfg.setdefault("capture", {})["worker_idle_timeout"] = seconds
-            from capture import set_worker_idle_timeout
-            set_worker_idle_timeout(seconds)
-
         save_config(self.cfg)
 
         if not set_start_with_windows(self.startup_var.get()):
@@ -4901,11 +4951,27 @@ class App:
 
         self._open_crop_dialog(img, title, _done)
 
-        while not done.wait(timeout=0.5):
+        # Pump tkinter events while waiting. _open_crop_dialog schedules the
+        # CropDialog via root.after(0, ...), which requires the main thread's
+        # event loop to run. When this method is called from the main thread
+        # (e.g. after a failed price-check or quick-sell detection),
+        # blocking without pumping would deadlock: the dialog can never be
+        # built because the event loop is stuck in this wait loop.
+        while not done.wait(timeout=0.1):
 
             try:
 
                 if not self.root.winfo_exists():
+
+                    return None
+
+                self.root.update_idletasks()
+
+                try:
+
+                    self.root.update()
+
+                except RuntimeError:
 
                     return None
 

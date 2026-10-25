@@ -184,14 +184,15 @@ class PriceChecker:
     # ------------------------------------------------------------------ #
     # Public entry point
     # ------------------------------------------------------------------ #
-    def run(self, mode, ai_tool, api_key, variables, on_result):
+    def run(self, mode, ai_tool, api_key, variables, on_result, pil_img=None):
         """Start a price check on a background thread.
 
         on_result(success: bool, message: str) is called on completion.
+        If pil_img is provided, it is used instead of capturing a new tooltip.
         """
         threading.Thread(
             target=self._run_thread,
-            args=(mode, ai_tool, api_key, variables, on_result),
+            args=(mode, ai_tool, api_key, variables, on_result, pil_img),
             daemon=True,
         ).start()
 
@@ -214,7 +215,7 @@ class PriceChecker:
     # ------------------------------------------------------------------ #
     # Internal
     # ------------------------------------------------------------------ #
-    def _run_thread(self, mode, ai_tool, api_key, variables, on_result):
+    def _run_thread(self, mode, ai_tool, api_key, variables, on_result, pil_img=None):
         template = load_prompt()
         if template is None:
             on_result(False, "Failed to load prompt template. Check Prompt.txt exists.")
@@ -222,17 +223,23 @@ class PriceChecker:
 
         filled_prompt = fill_prompt(template, variables)
 
-        # Always capture the tooltip image first
-        pil_img, err = capture_tooltip()
-        if err:
-            print(f"[pricecheck] Capture failed: {err}")
-            on_result(False, "tooltip_not_detected")
-            return
-
+        # Use pre-captured image if provided (e.g. manual crop redirect),
+        # otherwise capture tooltip via ONNX detector
         if pil_img is not None:
             # Copy the screenshot to the clipboard so the user can paste it
             # into any AI tool manually if needed.
             image_to_clipboard(pil_img)
+        else:
+            pil_img, err = capture_tooltip()
+            if err:
+                print(f"[pricecheck] Capture failed: {err}")
+                on_result(False, "tooltip_not_detected")
+                return
+
+            if pil_img is not None:
+                # Copy the screenshot to the clipboard so the user can paste it
+                # into any AI tool manually if needed.
+                image_to_clipboard(pil_img)
 
         if mode == "redirect":
             self._run_redirect(ai_tool, filled_prompt, pil_img, on_result)

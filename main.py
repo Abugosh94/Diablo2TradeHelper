@@ -191,6 +191,14 @@ class App:
 
         threading.Thread(target=_run, daemon=True).start()
 
+    def _manual_crop_blocking(self, title, img=None):
+        """Console mode has no GUI dialog, so manual crop is not available.
+
+        Returns None so callers can gracefully fall back to reporting failure.
+        """
+        print("[list] Manual crop is not available in console mode - use the GUI (F10).", flush=True)
+        return None
+
     def on_manual_crop_item(self):
         print("[list] Manual crop requested - use the GUI (F10) for region selection.")
 

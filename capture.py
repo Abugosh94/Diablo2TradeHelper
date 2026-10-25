@@ -255,14 +255,31 @@ def _log_capture_error(text: str):
         pass
 
 
-def _ensure_worker_running():
-    """Start the persistent capture worker if it isn't already alive."""
+def _kill_worker():
+    """Terminate the capture worker subprocess if it is running."""
     global _worker_process
     if _worker_process is not None:
         poll = _worker_process.poll()
         if poll is None:
-            return _worker_process
+            try:
+                _worker_process.terminate()
+                _worker_process.wait(timeout=5)
+            except Exception:
+                try:
+                    _worker_process.kill()
+                except Exception:
+                    pass
         _worker_process = None
+
+
+def _ensure_worker_running():
+    """Start a fresh capture worker (killing any existing one first).
+
+    The worker is killed after every capture so each capture starts from a
+    clean state with a freshly loaded ONNX model.
+    """
+    global _worker_process
+    _kill_worker()
 
     worker_path = _find_worker_path()
     if worker_path is None:
@@ -278,8 +295,6 @@ def _ensure_worker_running():
         _worker_process = subprocess.Popen(
             worker_args,
             stdout=subprocess.DEVNULL,
-            # Don't suppress stderr - worker errors (e.g. missing onnxruntime
-            # or model file) need to be visible so they can be diagnosed.
             stderr=None,
         )
         print(f"[capture] Worker subprocess started (PID={_worker_process.pid})")
@@ -337,11 +352,10 @@ def _write_capture_request(output_path: str, conf_path: str,
 
 
 def capture_tooltip_via_subprocess(conf_thres=0.5):
-    """Capture the tooltip using the persistent subprocess worker.
+    """Capture the tooltip using the subprocess worker.
 
-    The worker loads the ONNX model once and stays alive between captures,
-    self-terminating after WORKER_IDLE_TIMEOUT seconds of inactivity.
-    The parent app never loads ONNX itself.
+    A fresh worker is started for each capture and killed immediately after,
+    so every capture runs against a freshly loaded ONNX model.
 
     Returns (crop_bgr, confidence) or (None, 0.0).
     """
@@ -364,6 +378,8 @@ def capture_tooltip_via_subprocess(conf_thres=0.5):
                     os.remove(p)
             except Exception:
                 pass
+        # Kill the worker after every capture so the next one starts fresh
+        _kill_worker()
 
 
 def capture_tooltip(conf_thres=0.5):
@@ -397,23 +413,11 @@ def capture_tooltip(conf_thres=0.5):
 
 
 def shutdown_worker():
-    """Terminate the persistent capture worker if it is running.
+    """Terminate the capture worker subprocess if it is running.
 
     Called on app exit to ensure the worker process doesn't linger.
     """
-    global _worker_process
-    if _worker_process is not None:
-        poll = _worker_process.poll()
-        if poll is None:
-            try:
-                _worker_process.terminate()
-                _worker_process.wait(timeout=5)
-            except Exception:
-                try:
-                    _worker_process.kill()
-                except Exception:
-                    pass
-        _worker_process = None
+    _kill_worker()
 
 
 
